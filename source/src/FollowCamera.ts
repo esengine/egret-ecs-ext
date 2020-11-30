@@ -43,7 +43,7 @@ module es {
 
         public onAddedToEntity() {
             if (this.camera == null)
-                this.camera = new Camera();
+                this.camera = this.entity.getOrCreateComponent<es.Camera>(es.Camera);
 
             this.follow(this._targetEntity, this._cameraStyle);
 

@@ -450,7 +450,7 @@ var es;
         }
         FollowCamera.prototype.onAddedToEntity = function () {
             if (this.camera == null)
-                this.camera = new es.Camera();
+                this.camera = this.entity.getOrCreateComponent(es.Camera);
             this.follow(this._targetEntity, this._cameraStyle);
             es.Core.emitter.addObserver(es.CoreEvents.GraphicsDeviceReset, this.onGraphicsDeviceReset, this);
         };
