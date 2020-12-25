@@ -1,10 +1,18 @@
 module es {
+    /**
+     * 代表纹理图谱中的单个元素，由纹理和帧的源矩形组成
+     */
     export class Sprite {
+        /** 实际的Texture2D */
         public texture2D: egret.Texture;
+        /** 该元素的Texture2D中的矩形 */
         public readonly sourceRect: Rectangle;
-        public readonly center: Vector2;
-        public origin: Vector2;
+        /** 纹理区域的UVs */
         public readonly uvs: Rectangle = new Rectangle();
+        /** 如果它的原点是0,0，那么它就是sourceRect的中心 */
+        public readonly center: Vector2;
+        /** RenderableComponent在使用该Sprite时应该使用的原点。默认为中心 */
+        public origin: Vector2;
 
         constructor(texture: egret.Texture,
             sourceRect: Rectangle = new Rectangle(0, 0, texture.textureWidth, texture.textureHeight),
@@ -23,8 +31,12 @@ module es {
             this.uvs.height = sourceRect.height * inverseTexH;
         }
 
+        public clone(): Sprite {
+            return new Sprite(this.texture2D, this.sourceRect, this.origin);
+        }
+
         /**
-         * 提供一个精灵的列/行等间隔的图集的精灵列表
+         * 提供一个Sprites列表，给定一个等行/等列的Sprites图集
          * @param texture
          * @param cellWidth
          * @param cellHeight
@@ -41,6 +53,7 @@ module es {
 
             for (let y = 0; y < rows; y++) {
                 for (let x = 0; x < cols; x++) {
+                    // 跳过第一个cellOffset之前的所有内容
                     if (i++ < cellOffset) continue;
 
                     let texture = spriteSheet.getTexture(`${y}_${x}`);
