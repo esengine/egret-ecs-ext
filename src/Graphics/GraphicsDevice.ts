@@ -32,6 +32,14 @@ module es {
             }
         }
 
+        public get viewport() {
+            return this._viewport;
+        }
+
+        public set viewport(value: Viewport) {
+            this._viewport = value;
+        }
+
         public addResourceReference(resourceReference) {
             this._resources.add(resourceReference);
         }

@@ -4,10 +4,21 @@ module es {
     }
 
     export class Camera extends Component {
-        public _inset: CameraInset = {left: 0, right: 0, top: 0, bottom: 0};
-        public _areMatrixedDirty: boolean = true;
-        public _areBoundsDirty: boolean = true;
-        public _isProjectionMatrixDirty = true;
+        private _inset: CameraInset = {left: 0, right: 0, top: 0, bottom: 0};
+
+        private _bounds: Rectangle = new Rectangle();
+        private _transformMatrix: Matrix2D = Matrix2D.identity;
+        private _inverseTransformMatrix: Matrix2D = Matrix2D.identity;
+        private _projectionMatrix: Matrix;
+        private _origin: Vector2 = Vector2.zero;
+        private _minimumZoom = 0.3;
+        private _zoom: number = 0;
+        private _maximumZoom: number = 3;
+
+        private _areMatrixedDirty: boolean = true;
+        private _areBoundsDirty: boolean = true;
+        private _isProjectionMatrixDirty: boolean = true;
+
 
         constructor() {
             super();
@@ -62,8 +73,6 @@ module es {
             }
         }
 
-        public _zoom: number = 0;
-
         /**
          * 缩放值应该在-1和1之间、然后将该值从minimumZoom转换为maximumZoom。
          * 允许你设置适当的最小/最大值，然后使用更直观的-1到1的映射来更改缩放
@@ -87,7 +96,6 @@ module es {
             this.setZoom(value);
         }
 
-        public _minimumZoom = 0.3;
 
         /**
          * 相机变焦可以达到的最小非缩放值（0-number.max）。默认为0.3
@@ -104,8 +112,6 @@ module es {
             this.setMinimumZoom(value);
         }
 
-        public _maximumZoom = 3;
-
         /**
          * 相机变焦可以达到的最大非缩放值（0-number.max）。默认为3
          */
@@ -121,10 +127,8 @@ module es {
             this.setMaximumZoom(value);
         }
 
-        public _bounds: Rectangle = new Rectangle();
-
         /**
-         * 相机的世界-空间边界
+         * 摄像机的世界空间界限，对裁剪有用。
          */
         public get bounds() {
             if (this._areMatrixedDirty)
@@ -163,8 +167,6 @@ module es {
             return this._bounds;
         }
 
-        public _transformMatrix: Matrix2D = Matrix2D.identity;
-
         /**
          * 用于从世界坐标转换到屏幕
          */
@@ -174,7 +176,6 @@ module es {
             return this._transformMatrix;
         }
 
-        public _inverseTransformMatrix: Matrix2D = Matrix2D.identity;
 
         /**
          * 用于从屏幕坐标到世界的转换
@@ -185,7 +186,25 @@ module es {
             return this._inverseTransformMatrix;
         }
 
-        public _origin: Vector2 = Vector2.zero;
+        /**
+         * 二维摄像机的投影矩阵
+         */
+        public get projectionMatrix(): Matrix {
+            if (this._isProjectionMatrixDirty) {
+                Matrix.createOrthographicOffCenter(0, Game.graphicsDevice.viewport.width,
+                    Game.graphicsDevice.viewport.height, 0, 0, -1, this._projectionMatrix);
+                this._isProjectionMatrixDirty = false;
+            }
+
+            return this._projectionMatrix;
+        }
+
+        /**
+         * 获取视图-投影矩阵，即变换矩阵*投影矩阵
+         */
+        public get viewprojectionMatrix() {
+            return Matrix.multiply(Matrix2D.toMatrix(this.transformMatrix), this.projectionMatrix);
+        }
 
         public get origin() {
             return this._origin;
@@ -253,10 +272,7 @@ module es {
          * @param minZoom
          */
         public setMinimumZoom(minZoom: number): Camera {
-            if (minZoom <= 0) {
-                console.error("minimumZoom must be greater than zero");
-                return;
-            }
+            Insist.isTrue(minZoom > 0, "minimumZoom必须大于零");
 
             if (this._zoom < minZoom)
                 this._zoom = this.minimumZoom;
@@ -270,10 +286,7 @@ module es {
          * @param maxZoom
          */
         public setMaximumZoom(maxZoom: number): Camera {
-            if (maxZoom <= 0) {
-                console.error("maximumZoom must be greater than zero");
-                return;
-            }
+            Insist.isTrue(maxZoom > 0, "MaximumZoom必须大于零");
 
             if (this._zoom > maxZoom)
                 this._zoom = maxZoom;
@@ -282,6 +295,9 @@ module es {
             return this;
         }
 
+        /**
+         * 这将迫使矩阵和边界变脏
+         */
         public forceMatrixUpdate(){
             // 弄脏矩阵也会自动弄脏边界
             this._areMatrixedDirty = true;
@@ -320,16 +336,17 @@ module es {
         }
 
         /**
-         * 当场景渲染目标的大小发生变化时，我们会更新相机的原点并调整它的位置以保持它原来的位置
+         * 当场景渲染目标尺寸发生变化时，我们会更新摄像机的原点，并调整位置，使其保持在原来的位置
          * @param newWidth
          * @param newHeight
          */
         public onSceneRenderTargetSizeChanged(newWidth: number, newHeight: number){
             this._isProjectionMatrixDirty = true;
-            let oldOrigin = this._origin;
+            let oldOrigin = this._origin.clone();
             this.origin = new Vector2(newWidth / 2, newHeight / 2);
 
-            this.entity.transform.position.add(Vector2.subtract(this._origin, oldOrigin));
+            // 偏移我们的位置，以配合新的中心
+            this.entity.position = Vector2.add(this.entity.position, Vector2.subtract(this._origin, oldOrigin));
         }
 
         protected updateMatrixes() {
@@ -349,7 +366,7 @@ module es {
                 this._transformMatrix = this._transformMatrix.multiply(tempMat);
             }
 
-            tempMat = Matrix2D.createTranslation(Math.floor(this._origin.x), Math.floor(this._origin.y));
+            tempMat = Matrix2D.createTranslation(this._origin.x, this._origin.y);
             this._transformMatrix = this._transformMatrix.multiply(tempMat);
 
             this._inverseTransformMatrix = Matrix2D.invert(this._transformMatrix);

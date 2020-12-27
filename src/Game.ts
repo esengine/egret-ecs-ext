@@ -13,7 +13,6 @@ module es {
 
         private onAddToStage(event: egret.Event) {
             Game.graphicsDevice = new GraphicsDevice(this.stage.stageWidth, this.stage.stageHeight);
-            Core.registerGlobalManager(this._assetManager);
 
             this.addEventListener(egret.Event.ENTER_FRAME, this.update, this);
         }

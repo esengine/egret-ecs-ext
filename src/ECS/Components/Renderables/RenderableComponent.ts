@@ -39,7 +39,18 @@ module es {
             return this._layerDepth;
         }
         public set layerDepth(value: number) {
+            this.setLayerDepth(value);
+        }
 
+        /**
+         * 较低的renderLayers在前面，较高的在后面，就像layerDepth一樣，但不是限制在0-1。
+         * 请注意，这意味着更高的renderLayers首先被发送到Batcher。
+         */
+        public get renderLayer() {
+            return this._renderLayer;
+        }
+        public set renderLayer(value: number){
+            this.setRenderLayer(value);
         }
 
         public debugRenderEnabled: boolean = true;
@@ -49,6 +60,43 @@ module es {
         protected _bounds: Rectangle;
         protected _isVisble: boolean;
         protected _areBoundsDirty: boolean = true;
+
+        public onEntityTransformChanged(comp: transform.Component) {
+            this._areBoundsDirty = true;
+        }
+
+        /**
+         * 被渲染器调用。摄像机可以用来进行裁剪，并使用Batcher实例进行绘制
+         * @param batcher 
+         * @param camera 
+         */
+        public abstract render(batcher: Batcher, camera: Camera);
+
+        /**
+         * 只有在没有对撞机的情况下才会渲染边界。始终在原点上渲染一个正方形
+         * @param batcher 
+         */
+        public debugRender(batcher: Batcher) {
+            if (!this.debugRenderEnabled)
+                return;
+
+            // 如果我们没有对撞机，我们就画出我们的范围
+            if (this.entity.getComponent<Collider>(Collider) == null)
+                batcher.drawHollowRect(this.bounds, 0xFFFF00);
+        }
+
+        /**
+         * 标准的Batcher图层深度，0为前面，1为后面。
+         * 改变这个值会触发一种类似于renderableComponents的方法
+         * @param layerDepth 
+         */
+        public setLayerDepth(layerDepth: number): RenderableComponent {
+            this._layerDepth = MathHelper.clamp01(layerDepth);
+
+            if (this.entity != null && this.entity.scene != null)
+                (this.entity.scene as SceneImpl).renderableComponents.setRenderLayerNeedsComponentSort(this.renderLayer);
+            return this;
+        }
 
         /**
         * 较低的渲染层在前面，较高的在后面
