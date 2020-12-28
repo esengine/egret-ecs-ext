@@ -14,6 +14,7 @@ module es {
         public shouldRoundDestinations: boolean = true;
 
         private _shouldIgnoreRoundingDestinations: boolean;
+        private _textureInfo: egret.DisplayObject[];
         private _spriteEffect: SpriteEffect;
         // 跟踪开始/结束调用
         private _beginCalled: boolean;
@@ -32,12 +33,15 @@ module es {
 
         private readonly MAX_SPRITES = 2048;
 
+        static readonly _cornerOffsetX: number[] = [0, 1, 0, 1];
+        static readonly _cornerOffsetY: number[] = [0, 0, 1, 1];
+
         constructor(graphicsDevice: GraphicsDevice) {
             super();
             Insist.isTrue(graphicsDevice != null);
 
             this.graphicsDevice = graphicsDevice;
-
+            this._textureInfo = new Array(this.MAX_SPRITES);
             this._spriteEffect = new SpriteEffect();
 
             this._projectionMatrix = new Matrix();
@@ -82,6 +86,16 @@ module es {
                 this.prepRenderState();
         }
 
+        public end() {
+            Insist.isTrue(this._beginCalled, "End已经被调用，但Begin还没有被调用。在调用End之前，必须先成功调用Begin");
+            this._beginCalled = false;
+
+            if (!this._disableBatching)
+                this.flushBatch();
+
+            this._customEffect = null;
+        }
+
         public prepRenderState() {
             let viewport = this.graphicsDevice.viewport;
             this._projectionMatrix.m11 = 2 / viewport.width;
@@ -102,7 +116,7 @@ module es {
             this._shouldIgnoreRoundingDestinations = shouldIgnore;
         }
 
-        public drawHollowRect(rect: Rectangle, color: number, thickness: number = 1){
+        public drawHollowRect(rect: Rectangle, color: number, thickness: number = 1) {
             this.drawHollowBounds(rect.x, rect.y, rect.width, rect.height, color, thickness);
         }
 
@@ -125,10 +139,10 @@ module es {
         }
 
         public drawLineAngle(start: Vector2, radians: number, length: number, color: number, thickness: number) {
-            
+
         }
 
-        public draw(texture: egret.Texture, position: Vector2) {
+        public draw(texture: egret.DisplayObject, position: Vector2) {
             this.checkBegin();
             this.pushSprite(texture, null, position.x, position.y, 1, 1,
                 0xffffff, Vector2.zero, 0, 0, 0, false, 0, 0, 0, 0);
@@ -139,7 +153,7 @@ module es {
                 throw new Error("Begin还没有被叫到。在你画画之前，必须先调用Begin");
         }
 
-        private pushSprite(texture: egret.Texture, sourceRectangle: Rectangle = null, destinationX: number, destinationY: number,
+        private pushSprite(texture: egret.DisplayObject, sourceRectangle: Rectangle = null, destinationX: number, destinationY: number,
             destinationW: number, destinationH: number, color: number, origin: Vector2,
             rotation: number, depth: number, effects, destSizeInPixels: boolean, skewTopX: number,
             skewBottomX: number, skewLeftY: number, skewRightY: number) {
@@ -154,8 +168,8 @@ module es {
             let sourceX: number, sourceY: number, sourceW: number, sourceH: number;
             let originX: number, originY: number;
             if (sourceRectangle) {
-                let inverseTexW = 1 / texture.textureWidth;
-                let inverseTexH = 1 / texture.textureHeight;
+                let inverseTexW = 1 / texture.width;
+                let inverseTexH = 1 / texture.height;
 
                 sourceX = sourceRectangle.x * inverseTexW;
                 sourceY = sourceRectangle.y * inverseTexH;
@@ -175,12 +189,12 @@ module es {
                 sourceW = 1;
                 sourceH = 1;
 
-                originX = origin.x * (1 / texture.textureWidth);
-                originY = origin.y * (1 / texture.textureHeight);
+                originX = origin.x * (1 / texture.width);
+                originY = origin.y * (1 / texture.height);
 
                 if (!destSizeInPixels) {
-                    destinationW *= texture.textureWidth;
-                    destinationH *= texture.textureHeight;
+                    destinationW *= texture.width;
+                    destinationH *= texture.height;
                 }
             }
 
@@ -188,17 +202,69 @@ module es {
             let rotationMatrix1Y: number;
             let rotationMatrix2X: number;
             let rotationMatrix2Y: number;
-            if (!Mathf.)
+            if (!MathHelper.withinEpsilon(rotation)) {
+                let sin = Math.sin(rotation);
+                let cos = Math.cos(rotation);
+                rotationMatrix1X = cos;
+                rotationMatrix1Y = sin;
+                rotationMatrix2X = -sin;
+                rotationMatrix2Y = cos;
+            } else {
+                rotationMatrix1X = 1;
+                rotationMatrix1Y = 0;
+                rotationMatrix2X = 0;
+                rotationMatrix2Y = 1;
+            }
+
+            // 如果我们有一个翻转的精灵，则翻转我们的倾斜值
+            if (effects != 0) {
+                skewTopX *= -1;
+                skewBottomX *= -1;
+                skewLeftY *= -1;
+                skewRightY *= -1;
+            }
+
+            let cornerX = (Batcher._cornerOffsetX[0] - originX) * destinationW + skewTopX;
+            let cornerY = (Batcher._cornerOffsetY[0] - originY) * destinationH - skewLeftY;
+
+            if (this._disableBatching) {
+                this.drawPrimitives(texture, 0, 1);
+            } else {
+                this._textureInfo[this._numSprites] = texture;
+                this._numSprites += 1;
+            }
         }
 
-        public flushBatch(){
+        public flushBatch() {
             if (this._numSprites == 0)
                 return;
 
             let offset = 0;
-            let curTexture: egret.Texture = null;
+            let curTexture: egret.DisplayObject = null;
 
             this.prepRenderState();
+
+            curTexture = this._textureInfo[0];
+            for (let i = 1; i < this._numSprites; i += 1) {
+                if (this._textureInfo[i] != curTexture) {
+                    this.drawPrimitives(curTexture, offset, i - offset);
+                    curTexture = this._textureInfo[i];
+                    offset = i;
+                }
+            }
+
+            this.drawPrimitives(curTexture, offset, this._numSprites - offset);
+
+            this._numSprites = 0;
+        }
+
+        public drawPrimitives(texture: egret.DisplayObject, baseSprite: number, batchSize: number) {
+            let buffer = egret.sys.customHitTestBuffer;
+            if (this._customEffect != null) {
+                egret.sys.systemRenderer.render(texture, buffer,)
+            } else {
+
+            }
         }
     }
 }

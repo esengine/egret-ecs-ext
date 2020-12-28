@@ -19,7 +19,7 @@ module es {
         /**
          * 如果renderTarget不是空的，这个渲染器将渲染到RenderTarget中，而不是渲染到屏幕上
          */
-        public renderTexture: egret.RenderTexture;
+        public renderTexture: egret.Texture;
         /**
          * 标志，决定是否要调试渲染。
          * 渲染方法接收一个bool(debugRenderEnabled)让渲染器知道全局调试渲染是否开启/关闭。
