@@ -2,7 +2,7 @@ module es {
     /**
      * 便利的子类，有一个单一的属性，可以投递Effect，使配置更简单
      */
-    export class Material {
+    export class Material implements IMaterial {
         /** 默认材料实例 */
         public static defaultMaterial: Material = new Material(null);
         /** Batcher为当前RenderableComponent使用的效果 */

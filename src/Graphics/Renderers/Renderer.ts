@@ -3,7 +3,7 @@ module es {
      * 渲染器被添加到一个场景中，并处理所有对RenderableComponent.render和Entity.debugRender的实际调用。
      * 一个简单的渲染器可以直接启动Batcher.instanceGraphics.batcher，也可以创建自己的本地Batcher实例
      */
-    export abstract class Renderer implements IComparer<Renderer> {
+    export abstract class Renderer implements IComparer<Renderer>, IRenderer {
         /** Batcher使用的材料。任何RenderableComponent都可以覆盖它 */
         public material: Material = Material.defaultMaterial;
         /** 
@@ -78,6 +78,73 @@ module es {
             if (this.renderTexture != null) {
 
             }
+
+            this._currentMaterial = this.material;
+            Graphics.instance.batcher.begin(this._currentMaterial.effect, Matrix2D.toMatrix(cam.transformMatrix));
+        }
+
+        public abstract render(scene: Scene);
+
+        /**
+         * 渲染RenderableComponent冲洗Batcher，并在必要时重置当前材料
+         * @param renderable 
+         * @param cam 
+         */
+        protected renderAfterStateCheck(renderable: IRenderable, cam: Camera) {
+            if (renderable.material != null && renderable.material != this._currentMaterial) {
+                this._currentMaterial = renderable.material;
+                if (this._currentMaterial.effect != null)
+                    this._currentMaterial.onPreRender(cam);
+                this.flushBatch(cam);
+            } else if (renderable.material == null && this._currentMaterial != this.material) {
+                this._currentMaterial = this.material;
+                this.flushBatch(cam);
+            }
+
+            renderable.render(Graphics.instance.batcher, cam);
+        }
+
+        /**
+         * 通过呼叫结束然后开始，强行刷新Batcher
+         * @param cam 
+         */
+        private flushBatch(cam: Camera) {
+            Graphics.instance.batcher.end();
+            Graphics.instance.batcher.begin(this._currentMaterial.effect, Matrix2D.toMatrix(cam.transformMatrix));
+        }
+
+        /**
+         * 结束Batcher并清除RenderTarget（如果有RenderTarget）
+         */
+        protected endRender() {
+            Graphics.instance.batcher.end();
+        }
+
+        /**
+         * 默认的debugRender方法只是循环浏览所有实体并调用entity.debugRender。
+         * 请注意，此时你正处于一个批次的中间，所以你可能需要调用Batcher.End和Batcher.begin来清除任何等待渲染的材料和项目
+         * @param scene 
+         * @param cam 
+         */
+        protected debugRender(scene: Scene, cam: Camera) {
+            Graphics.instance.batcher.end();
+            Graphics.instance.batcher.begin(null, Matrix2D.toMatrix(cam.transformMatrix));
+
+            for (let entity of scene.entities.buffer) {
+                if (entity.enabled)
+                    entity.debugRender(Graphics.instance.batcher);
+            }
+        }
+
+        /**
+         * 当默认的场景RenderTarget被调整大小时，以及在场景已经开始的情况下添加一个Renderer时，会被调用。
+         * @param newWidth 
+         * @param newHeight 
+         */
+        public onSceneBackBufferSizeChanged(newWidth: number, newHeight: number) { }
+
+        public compare(other: Renderer) {
+            return this.renderOrder - other.renderOrder;
         }
     }
 }

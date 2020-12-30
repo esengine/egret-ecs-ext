@@ -3,8 +3,8 @@ module es {
         left: number, right: number, top: number, bottom: number
     }
 
-    export class Camera extends Component {
-        private _inset: CameraInset = {left: 0, right: 0, top: 0, bottom: 0};
+    export class Camera extends Component implements ICamera {
+        private _inset: CameraInset = { left: 0, right: 0, top: 0, bottom: 0 };
 
         private _bounds: Rectangle = new Rectangle();
         private _transformMatrix: Matrix2D = Matrix2D.identity;
@@ -58,7 +58,7 @@ module es {
         /**
          * 原始的缩放值。这就是用于比例矩阵的精确值。默认值为1。
          */
-        public get rawZoom(){
+        public get rawZoom() {
             return this._zoom;
         }
 
@@ -66,8 +66,8 @@ module es {
          * 原始的缩放值。这就是用于比例矩阵的精确值。默认值为1。
          * @param value
          */
-        public set rawZoom(value: number){
-            if (value != this._zoom){
+        public set rawZoom(value: number) {
+            if (value != this._zoom) {
                 this._zoom = value;
                 this._areMatrixedDirty = true;
             }
@@ -191,8 +191,8 @@ module es {
          */
         public get projectionMatrix(): Matrix {
             if (this._isProjectionMatrixDirty) {
-                Matrix.createOrthographicOffCenter(0, Game.graphicsDevice.viewport.width,
-                    Game.graphicsDevice.viewport.height, 0, 0, -1, this._projectionMatrix);
+                Matrix.createOrthographicOffCenter(0, Core.graphicsDevice.viewport.width,
+                    Core.graphicsDevice.viewport.height, 0, 0, -1, this._projectionMatrix);
                 this._isProjectionMatrixDirty = false;
             }
 
@@ -203,7 +203,8 @@ module es {
          * 获取视图-投影矩阵，即变换矩阵*投影矩阵
          */
         public get viewprojectionMatrix() {
-            return Matrix.multiply(Matrix2D.toMatrix(this.transformMatrix), this.projectionMatrix);
+            Matrix.multiply(Matrix2D.toMatrix(this.transformMatrix), this.projectionMatrix);
+            return this.projectionMatrix;
         }
 
         public get origin() {
@@ -225,7 +226,7 @@ module es {
          * @param bottom
          */
         public setInset(left: number, right: number, top: number, bottom: number): Camera {
-            this._inset = {left: left, right: right, top: top, bottom: bottom};
+            this._inset = { left: left, right: right, top: top, bottom: bottom };
             this._areBoundsDirty = true;
             return this;
         }
@@ -298,7 +299,7 @@ module es {
         /**
          * 这将迫使矩阵和边界变脏
          */
-        public forceMatrixUpdate(){
+        public forceMatrixUpdate() {
             // 弄脏矩阵也会自动弄脏边界
             this._areMatrixedDirty = true;
         }
@@ -340,7 +341,7 @@ module es {
          * @param newWidth
          * @param newHeight
          */
-        public onSceneRenderTargetSizeChanged(newWidth: number, newHeight: number){
+        public onSceneRenderTargetSizeChanged(newWidth: number, newHeight: number) {
             this._isProjectionMatrixDirty = true;
             let oldOrigin = this._origin.clone();
             this.origin = new Vector2(newWidth / 2, newHeight / 2);

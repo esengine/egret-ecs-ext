@@ -8,6 +8,319 @@ var __extends = (this && this.__extends) || (function () {
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     };
 })();
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (_) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
+var es;
+(function (es) {
+    /**
+     *  全局核心类
+     */
+    var Core = /** @class */ (function (_super) {
+        __extends(Core, _super);
+        function Core(width, height, enableEntitySystems) {
+            if (enableEntitySystems === void 0) { enableEntitySystems = true; }
+            var _this = _super.call(this) || this;
+            /**
+             * 全局访问系统
+             */
+            _this._globalManagers = [];
+            _this._coroutineManager = new es.CoroutineManager();
+            _this._timerManager = new es.TimerManager();
+            _this._frameCounterElapsedTime = 0;
+            _this._frameCounter = 0;
+            _this._totalMemory = 0;
+            _this.width = width;
+            _this.height = height;
+            Core._instance = _this;
+            Core.emitter = new es.Emitter();
+            Core.emitter.addObserver(es.CoreEvents.FrameUpdated, _this.update, _this);
+            Core.registerGlobalManager(_this._coroutineManager);
+            Core.registerGlobalManager(_this._timerManager);
+            Core.entitySystemsEnabled = enableEntitySystems;
+            _this.initialize();
+            return _this;
+        }
+        Object.defineProperty(Core, "Instance", {
+            /**
+             * 提供对单例/游戏实例的访问
+             * @constructor
+             */
+            get: function () {
+                return this._instance;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(Core, "scene", {
+            /**
+             * 当前活动的场景。注意，如果设置了该设置，在更新结束之前场景实际上不会改变
+             */
+            get: function () {
+                if (!this._instance)
+                    return null;
+                return this._instance._scene;
+            },
+            /**
+             * 当前活动的场景。注意，如果设置了该设置，在更新结束之前场景实际上不会改变
+             * @param value
+             */
+            set: function (value) {
+                if (!value) {
+                    console.error("场景不能为空");
+                    return;
+                }
+                if (this._instance._scene == null) {
+                    this._instance._scene = value;
+                    this._instance.onSceneChanged();
+                    this._instance._scene.begin();
+                }
+                else {
+                    this._instance._nextScene = value;
+                }
+            },
+            enumerable: true,
+            configurable: true
+        });
+        /**
+         * 添加一个全局管理器对象，它的更新方法将调用场景前的每一帧。
+         * @param manager
+         */
+        Core.registerGlobalManager = function (manager) {
+            this._instance._globalManagers.push(manager);
+            manager.enabled = true;
+        };
+        /**
+         * 删除全局管理器对象
+         * @param manager
+         */
+        Core.unregisterGlobalManager = function (manager) {
+            new linq.List(this._instance._globalManagers).remove(manager);
+            manager.enabled = false;
+        };
+        /**
+         * 获取类型为T的全局管理器
+         * @param type
+         */
+        Core.getGlobalManager = function (type) {
+            for (var i = 0; i < this._instance._globalManagers.length; i++) {
+                if (this._instance._globalManagers[i] instanceof type)
+                    return this._instance._globalManagers[i];
+            }
+            return null;
+        };
+        /**
+         * 启动一个coroutine。Coroutine可以将number延时几秒或延时到其他startCoroutine.Yielding
+         * null将使coroutine在下一帧被执行。
+         * @param enumerator
+         */
+        Core.startCoroutine = function (enumerator) {
+            return this._instance._coroutineManager.startCoroutine(enumerator);
+        };
+        /**
+         * 调度一个一次性或重复的计时器，该计时器将调用已传递的动作
+         * @param timeInSeconds
+         * @param repeats
+         * @param context
+         * @param onTime
+         */
+        Core.schedule = function (timeInSeconds, repeats, context, onTime) {
+            if (repeats === void 0) { repeats = false; }
+            if (context === void 0) { context = null; }
+            return this._instance._timerManager.schedule(timeInSeconds, repeats, context, onTime);
+        };
+        Core.prototype.onOrientationChanged = function () {
+            Core.emitter.emit(es.CoreEvents.OrientationChanged);
+        };
+        Core.prototype.startDebugDraw = function () {
+            this._frameCounter++;
+            this._frameCounterElapsedTime += es.Time.deltaTime;
+            if (this._frameCounterElapsedTime >= 1) {
+                var memoryInfo = window.performance["memory"];
+                if (memoryInfo != null) {
+                    this._totalMemory = Number((memoryInfo.totalJSHeapSize / 1048576).toFixed(2));
+                }
+                if (this._titleMemory)
+                    this._titleMemory(this._totalMemory, this._frameCounter);
+                this._frameCounter = 0;
+                this._frameCounterElapsedTime -= 1;
+            }
+        };
+        /**
+         * 在一个场景结束后，下一个场景开始之前调用
+         */
+        Core.prototype.onSceneChanged = function () {
+            Core.emitter.emit(es.CoreEvents.SceneChanged);
+            es.Time.sceneChanged();
+            Core.emitter.emit(es.CoreEvents.CallGC);
+        };
+        /**
+         * 当屏幕大小发生改变时调用
+         */
+        Core.prototype.onGraphicsDeviceReset = function () {
+            // 我们用这些来避免垃圾事件的发生
+            if (this._graphicsDeviceChangeTimer != null) {
+                this._graphicsDeviceChangeTimer.reset();
+            }
+            else {
+                this._graphicsDeviceChangeTimer = Core.schedule(0.05, false, this, function (t) {
+                    t.context._graphicsDeviceChangeTimer = null;
+                    Core.emitter.emit(es.CoreEvents.GraphicsDeviceReset);
+                });
+            }
+        };
+        Core.prototype.initialize = function () {
+            Core.graphicsDevice = new es.GraphicsDevice(this.stage.stageWidth, this.stage.stageHeight);
+            es.Graphics.instance = new es.Graphics();
+        };
+        Core.prototype.update = function (currentTime) {
+            return __awaiter(this, void 0, void 0, function () {
+                var i;
+                return __generator(this, function (_a) {
+                    if (currentTime != null)
+                        es.Time.update(currentTime);
+                    if (this._scene != null) {
+                        for (i = this._globalManagers.length - 1; i >= 0; i--) {
+                            if (this._globalManagers[i].enabled)
+                                this._globalManagers[i].update();
+                        }
+                        if (Core.useCustomUpdate) {
+                            Core.emitter.emit(es.CoreEvents.SceneUpdated);
+                        }
+                        else {
+                            if (this._sceneTransition == null ||
+                                (this._sceneTransition != null &&
+                                    (!this._sceneTransition._loadsNewScene || this._sceneTransition._isNewSceneLoaded))) {
+                                this._scene.update();
+                            }
+                        }
+                        if (this._nextScene != null) {
+                            this._scene.end();
+                            this._scene = this._nextScene;
+                            this._nextScene = null;
+                            this.onSceneChanged();
+                            this._scene.begin();
+                        }
+                    }
+                    this.startDebugDraw();
+                    Core.emitter.emit(es.CoreEvents.CallDraw);
+                    return [2 /*return*/];
+                });
+            });
+        };
+        /**
+         * 启用/禁用焦点丢失时的暂停。如果为真，则不调用更新或渲染方法
+         */
+        Core.pauseOnFocusLost = true;
+        /**
+         * 是否启用调试渲染
+         */
+        Core.debugRenderEndabled = false;
+        /**
+         * 是否使用自定义场景更新
+         * 如果使用请监听SceneUpdated
+         */
+        Core.useCustomUpdate = false;
+        return Core;
+    }(egret.DisplayObjectContainer));
+    es.Core = Core;
+})(es || (es = {}));
+var es;
+(function (es) {
+    /**
+     * 用于管理egret的资源管理器
+     * egret因为有分组加载 所以在加载资源前要保证资源组先被加载完成
+     */
+    var AssetManager = /** @class */ (function (_super) {
+        __extends(AssetManager, _super);
+        function AssetManager() {
+            return _super !== null && _super.apply(this, arguments) || this;
+        }
+        /**
+         * 加载资源
+         * @param name
+         * @param group
+         * @param assetTask
+         */
+        AssetManager.prototype.load = function (name, group, assetTask) {
+            if (group === void 0) { group = null; }
+            if (assetTask === void 0) { assetTask = null; }
+            return __awaiter(this, void 0, void 0, function () {
+                var isLoad;
+                return __generator(this, function (_a) {
+                    switch (_a.label) {
+                        case 0:
+                            if (!group) return [3 /*break*/, 2];
+                            isLoad = RES.isGroupLoaded(group);
+                            if (!!isLoad) return [3 /*break*/, 2];
+                            return [4 /*yield*/, RES.loadGroup(group, 0, new AssetTaskReport(assetTask))];
+                        case 1:
+                            _a.sent();
+                            _a.label = 2;
+                        case 2: return [4 /*yield*/, RES.getResAsync(name)];
+                        case 3: return [2 /*return*/, _a.sent()];
+                    }
+                });
+            });
+        };
+        return AssetManager;
+    }(es.GlobalManager));
+    es.AssetManager = AssetManager;
+    var AssetTaskReport = /** @class */ (function () {
+        function AssetTaskReport(assetTask) {
+            this.assetUserTask = assetTask;
+        }
+        AssetTaskReport.prototype.onProgress = function (current, total, resItem) {
+            this.assetUserTask && this.assetUserTask(current, total, resItem);
+        };
+        return AssetTaskReport;
+    }());
+    es.AssetTaskReport = AssetTaskReport;
+})(es || (es = {}));
+var es;
+(function (es) {
+    var SpriteAnimation = /** @class */ (function () {
+        function SpriteAnimation(sprites, frameRate) {
+            if (frameRate === void 0) { frameRate = 10; }
+            this.sprites = sprites;
+            this.frameRate = frameRate;
+        }
+        return SpriteAnimation;
+    }());
+    es.SpriteAnimation = SpriteAnimation;
+})(es || (es = {}));
 var es;
 (function (es) {
     var Camera = /** @class */ (function (_super) {
@@ -15,16 +328,16 @@ var es;
         function Camera() {
             var _this = _super.call(this) || this;
             _this._inset = { left: 0, right: 0, top: 0, bottom: 0 };
-            _this._areMatrixedDirty = true;
-            _this._areBoundsDirty = true;
-            _this._isProjectionMatrixDirty = true;
-            _this._zoom = 0;
-            _this._minimumZoom = 0.3;
-            _this._maximumZoom = 3;
             _this._bounds = new es.Rectangle();
             _this._transformMatrix = es.Matrix2D.identity;
             _this._inverseTransformMatrix = es.Matrix2D.identity;
             _this._origin = es.Vector2.zero;
+            _this._minimumZoom = 0.3;
+            _this._zoom = 0;
+            _this._maximumZoom = 3;
+            _this._areMatrixedDirty = true;
+            _this._areBoundsDirty = true;
+            _this._isProjectionMatrixDirty = true;
             _this.setZoom(0);
             return _this;
         }
@@ -141,7 +454,7 @@ var es;
         });
         Object.defineProperty(Camera.prototype, "bounds", {
             /**
-             * 相机的世界-空间边界
+             * 摄像机的世界空间界限，对裁剪有用。
              */
             get: function () {
                 if (this._areMatrixedDirty)
@@ -194,6 +507,31 @@ var es;
                 if (this._areMatrixedDirty)
                     this.updateMatrixes();
                 return this._inverseTransformMatrix;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(Camera.prototype, "projectionMatrix", {
+            /**
+             * 二维摄像机的投影矩阵
+             */
+            get: function () {
+                if (this._isProjectionMatrixDirty) {
+                    es.Matrix.createOrthographicOffCenter(0, es.Core.graphicsDevice.viewport.width, es.Core.graphicsDevice.viewport.height, 0, 0, -1, this._projectionMatrix);
+                    this._isProjectionMatrixDirty = false;
+                }
+                return this._projectionMatrix;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(Camera.prototype, "viewprojectionMatrix", {
+            /**
+             * 获取视图-投影矩阵，即变换矩阵*投影矩阵
+             */
+            get: function () {
+                es.Matrix.multiply(es.Matrix2D.toMatrix(this.transformMatrix), this.projectionMatrix);
+                return this.projectionMatrix;
             },
             enumerable: true,
             configurable: true
@@ -263,10 +601,7 @@ var es;
          * @param minZoom
          */
         Camera.prototype.setMinimumZoom = function (minZoom) {
-            if (minZoom <= 0) {
-                console.error("minimumZoom must be greater than zero");
-                return;
-            }
+            es.Insist.isTrue(minZoom > 0, "minimumZoom必须大于零");
             if (this._zoom < minZoom)
                 this._zoom = this.minimumZoom;
             this._minimumZoom = minZoom;
@@ -277,15 +612,15 @@ var es;
          * @param maxZoom
          */
         Camera.prototype.setMaximumZoom = function (maxZoom) {
-            if (maxZoom <= 0) {
-                console.error("maximumZoom must be greater than zero");
-                return;
-            }
+            es.Insist.isTrue(maxZoom > 0, "MaximumZoom必须大于零");
             if (this._zoom > maxZoom)
                 this._zoom = maxZoom;
             this._maximumZoom = maxZoom;
             return this;
         };
+        /**
+         * 这将迫使矩阵和边界变脏
+         */
         Camera.prototype.forceMatrixUpdate = function () {
             // 弄脏矩阵也会自动弄脏边界
             this._areMatrixedDirty = true;
@@ -318,15 +653,16 @@ var es;
             return screenPosition;
         };
         /**
-         * 当场景渲染目标的大小发生变化时，我们会更新相机的原点并调整它的位置以保持它原来的位置
+         * 当场景渲染目标尺寸发生变化时，我们会更新摄像机的原点，并调整位置，使其保持在原来的位置
          * @param newWidth
          * @param newHeight
          */
         Camera.prototype.onSceneRenderTargetSizeChanged = function (newWidth, newHeight) {
             this._isProjectionMatrixDirty = true;
-            var oldOrigin = this._origin;
+            var oldOrigin = this._origin.clone();
             this.origin = new es.Vector2(newWidth / 2, newHeight / 2);
-            this.entity.transform.position.add(es.Vector2.subtract(this._origin, oldOrigin));
+            // 偏移我们的位置，以配合新的中心
+            this.entity.position = es.Vector2.add(this.entity.position, es.Vector2.subtract(this._origin, oldOrigin));
         };
         Camera.prototype.updateMatrixes = function () {
             if (!this._areMatrixedDirty)
@@ -341,7 +677,7 @@ var es;
                 tempMat = es.Matrix2D.createRotation(this.entity.transform.rotation);
                 this._transformMatrix = this._transformMatrix.multiply(tempMat);
             }
-            tempMat = es.Matrix2D.createTranslation(Math.floor(this._origin.x), Math.floor(this._origin.y));
+            tempMat = es.Matrix2D.createTranslation(this._origin.x, this._origin.y);
             this._transformMatrix = this._transformMatrix.multiply(tempMat);
             this._inverseTransformMatrix = es.Matrix2D.invert(this._transformMatrix);
             // 无论何时矩阵改变边界都是无效的
@@ -550,70 +886,6 @@ var es;
         return FollowCamera;
     }(es.Component));
     es.FollowCamera = FollowCamera;
-})(es || (es = {}));
-var es;
-(function (es) {
-    var Sprite = /** @class */ (function () {
-        function Sprite(texture, sourceRect, origin) {
-            if (sourceRect === void 0) { sourceRect = new es.Rectangle(0, 0, texture.textureWidth, texture.textureHeight); }
-            if (origin === void 0) { origin = sourceRect.getHalfSize(); }
-            this.uvs = new es.Rectangle();
-            this.texture2D = texture;
-            this.sourceRect = sourceRect;
-            this.center = new es.Vector2(sourceRect.width * 0.5, sourceRect.height * 0.5);
-            this.origin = origin;
-            var inverseTexW = 1 / texture.textureWidth;
-            var inverseTexH = 1 / texture.textureHeight;
-            this.uvs.x = sourceRect.x * inverseTexW;
-            this.uvs.y = sourceRect.y * inverseTexH;
-            this.uvs.width = sourceRect.width * inverseTexW;
-            this.uvs.height = sourceRect.height * inverseTexH;
-        }
-        /**
-         * 提供一个精灵的列/行等间隔的图集的精灵列表
-         * @param texture
-         * @param cellWidth
-         * @param cellHeight
-         * @param cellOffset 处理时要包含的第一个单元格。基于0的索引
-         * @param maxCellsToInclude 包含的最大单元
-         */
-        Sprite.spritesFromAtlas = function (texture, cellWidth, cellHeight, cellOffset, maxCellsToInclude) {
-            if (cellOffset === void 0) { cellOffset = 0; }
-            if (maxCellsToInclude === void 0) { maxCellsToInclude = Number.MAX_VALUE; }
-            var sprites = [];
-            var cols = texture.textureWidth / cellWidth;
-            var rows = texture.textureHeight / cellHeight;
-            var i = 0;
-            var spriteSheet = new egret.SpriteSheet(texture);
-            for (var y = 0; y < rows; y++) {
-                for (var x = 0; x < cols; x++) {
-                    if (i++ < cellOffset)
-                        continue;
-                    var texture_1 = spriteSheet.getTexture(y + "_" + x);
-                    if (!texture_1)
-                        texture_1 = spriteSheet.createTexture(y + "_" + x, x * cellWidth, y * cellHeight, cellWidth, cellHeight);
-                    sprites.push(new Sprite(texture_1));
-                    if (sprites.length == maxCellsToInclude)
-                        return sprites;
-                }
-            }
-            return sprites;
-        };
-        return Sprite;
-    }());
-    es.Sprite = Sprite;
-})(es || (es = {}));
-var es;
-(function (es) {
-    var SpriteAnimation = /** @class */ (function () {
-        function SpriteAnimation(sprites, frameRate) {
-            if (frameRate === void 0) { frameRate = 10; }
-            this.sprites = sprites;
-            this.frameRate = frameRate;
-        }
-        return SpriteAnimation;
-    }());
-    es.SpriteAnimation = SpriteAnimation;
 })(es || (es = {}));
 var es;
 (function (es) {
@@ -847,4 +1119,857 @@ var es;
         return SpriteAnimator;
     }(es.SpriteRenderer));
     es.SpriteAnimator = SpriteAnimator;
+})(es || (es = {}));
+var es;
+(function (es) {
+    /**
+     * 封装类，它拥有Batcher的实例和助手，因此它可以被传来传去，绘制任何东西
+     */
+    var Graphics = /** @class */ (function () {
+        function Graphics() {
+            var web = egret['web'];
+            var context = web.WebGLRenderContext.getInstance();
+            Graphics.gl = context.context;
+            this.batcher = new es.Batcher(es.Core.graphicsDevice);
+            var tex = new egret.Texture();
+            this.pixelTexture = new es.Sprite(tex, new es.Rectangle(0, 0, 1, 1));
+        }
+        Graphics.prototype.unload = function () {
+            this.batcher.disposed();
+            this.batcher = null;
+        };
+        return Graphics;
+    }());
+    es.Graphics = Graphics;
+})(es || (es = {}));
+var es;
+(function (es) {
+    var GraphicsDevice = /** @class */ (function () {
+        function GraphicsDevice(width, height) {
+            /**
+             * 对全局资源列表使用WeakReference，因为我们不知道资源何时会被处置和收集。
+             * 我们不希望通过在该列表中持有强引用来阻止资源被收集
+             */
+            this._resources = new WeakSet();
+            this.setup(width, height);
+        }
+        GraphicsDevice.prototype.setup = function (width, height) {
+            this._viewport = new es.Viewport(0, 0, width, height);
+            this._viewport.maxDepth = 1;
+            this.effectCache = new Map();
+        };
+        GraphicsDevice.prototype.dispose = function (disposing) {
+            if (!this._isDisposed) {
+                if (disposing) {
+                    this.effectCache.clear();
+                }
+                this._isDisposed = true;
+            }
+        };
+        Object.defineProperty(GraphicsDevice.prototype, "viewport", {
+            get: function () {
+                return this._viewport;
+            },
+            set: function (value) {
+                this._viewport = value;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        GraphicsDevice.prototype.addResourceReference = function (resourceReference) {
+            this._resources.add(resourceReference);
+        };
+        GraphicsDevice.prototype.removeResourceReference = function (resourceReference) {
+            this._resources.delete(resourceReference);
+        };
+        GraphicsDevice.getTitleSafeArea = function (x, y, width, height) {
+            return this.platformGetTitleSafeArea(x, y, width, height);
+        };
+        GraphicsDevice.platformGetTitleSafeArea = function (x, y, width, height) {
+            return new es.Rectangle(x, y, width, height);
+        };
+        return GraphicsDevice;
+    }());
+    es.GraphicsDevice = GraphicsDevice;
+})(es || (es = {}));
+var es;
+(function (es) {
+    /**
+     * 便利的子类，有一个单一的属性，可以投递Effect，使配置更简单
+     */
+    var Material = /** @class */ (function () {
+        function Material(effect) {
+            this.effect = effect;
+        }
+        Material.prototype.dispose = function () {
+            if (this.effect != null) {
+                this.effect = null;
+            }
+        };
+        /**
+         * 在Batcher.begin开始前初始化设置材质时调用，以允许任何有参数的Effects在必要时根据Camera Matrix进行设置
+         * 例如通过Camera.viewProjectionMatrix模仿Batcher的做法设置MatrixTransform。
+         * 只有当有一个非空的Effect时才会被调用
+         * @param camera
+         */
+        Material.prototype.onPreRender = function (camera) {
+        };
+        /**
+         * 这里非常基本。我们只检查指针是否相同
+         * @param other
+         */
+        Material.prototype.compareTo = function (other) {
+            if (other == null)
+                return 1;
+            if (this == other)
+                return 0;
+            return -1;
+        };
+        /**
+         * 克隆材料。
+         * 请注意，效果不是克隆的。它与原始材料是同一个实例
+         */
+        Material.prototype.clone = function () {
+            return new Material(this.effect);
+        };
+        /** 默认材料实例 */
+        Material.defaultMaterial = new Material(null);
+        return Material;
+    }());
+    es.Material = Material;
+})(es || (es = {}));
+var es;
+(function (es) {
+    /** 描述渲染目标表面的视图边界 */
+    var Viewport = /** @class */ (function () {
+        function Viewport(x, y, width, height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.minDepth = 0;
+            this.maxDepth = 1;
+        }
+        Object.defineProperty(Viewport.prototype, "aspectRatio", {
+            /**
+             * 该视口的长宽比，即宽度/高度
+             */
+            get: function () {
+                if ((this.height != 0) && (this.width != 0)) {
+                    return this.width / this.height;
+                }
+                return 0;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(Viewport.prototype, "bounds", {
+            /**
+             * 获取或设置该视口的边界
+             */
+            get: function () {
+                return new es.Rectangle(this.x, this.y, this.width, this.height);
+            },
+            set: function (value) {
+                this.x = value.x;
+                this.y = value.y;
+                this.width = value.width;
+                this.height = value.height;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(Viewport.prototype, "titleSafeArea", {
+            /**
+             * 返回保证在低质量显示器上可见的视口子集
+             */
+            get: function () {
+                return es.GraphicsDevice.getTitleSafeArea(this.x, this.y, this.width, this.height);
+            },
+            enumerable: true,
+            configurable: true
+        });
+        return Viewport;
+    }());
+    es.Viewport = Viewport;
+})(es || (es = {}));
+var es;
+(function (es) {
+    /**
+     * 这个类的存在只是为了让我们可以偷偷地把Batcher带过去
+     */
+    var GraphicsResource = /** @class */ (function () {
+        function GraphicsResource() {
+            this._selfReference = new WeakSet();
+        }
+        Object.defineProperty(GraphicsResource.prototype, "graphicsDevice", {
+            get: function () {
+                return this._graphicsDevice;
+            },
+            set: function (value) {
+                es.Insist.isTrue(value != null);
+                if (this._graphicsDevice == value)
+                    return;
+                if (this._graphicsDevice != null) {
+                    this.updateResourceReference(false);
+                    this._selfReference.delete(this);
+                }
+                this._graphicsDevice = value;
+                this._selfReference.add(this);
+                this.updateResourceReference(true);
+            },
+            enumerable: true,
+            configurable: true
+        });
+        GraphicsResource.prototype.dispose = function (disposing) {
+            if (!this.isDisposed) {
+                if (disposing) {
+                    // 释放被管理对象
+                }
+                // 从全局图形资源列表中删除
+                if (this.graphicsDevice != null)
+                    this.updateResourceReference(false);
+                this._selfReference.delete(this);
+                this._graphicsDevice = null;
+                this.isDisposed = true;
+            }
+        };
+        GraphicsResource.prototype.updateResourceReference = function (shouldAdd) {
+            if (shouldAdd) {
+                this.graphicsDevice.addResourceReference(this._selfReference);
+            }
+            else {
+                this.graphicsDevice.removeResourceReference(this._selfReference);
+            }
+        };
+        return GraphicsResource;
+    }());
+    es.GraphicsResource = GraphicsResource;
+})(es || (es = {}));
+///<reference path="./GraphicsResource.ts" />
+var es;
+///<reference path="./GraphicsResource.ts" />
+(function (es) {
+    var Batcher = /** @class */ (function (_super) {
+        __extends(Batcher, _super);
+        function Batcher(graphicsDevice) {
+            var _this = _super.call(this) || this;
+            /**
+             * 如果为true，则将在绘制目标位置之前将其四舍五入
+             */
+            _this.shouldRoundDestinations = true;
+            _this.MAX_SPRITES = 2048;
+            es.Insist.isTrue(graphicsDevice != null);
+            _this.graphicsDevice = graphicsDevice;
+            _this._textureInfo = new Array(_this.MAX_SPRITES);
+            _this._spriteEffect = new es.SpriteEffect();
+            _this._projectionMatrix = new es.Matrix();
+            _this._projectionMatrix.m11 = 0;
+            _this._projectionMatrix.m12 = 0;
+            _this._projectionMatrix.m13 = 0;
+            _this._projectionMatrix.m14 = 0;
+            _this._projectionMatrix.m21 = 0;
+            _this._projectionMatrix.m22 = 0;
+            _this._projectionMatrix.m23 = 0;
+            _this._projectionMatrix.m24 = 0;
+            _this._projectionMatrix.m31 = 0;
+            _this._projectionMatrix.m32 = 0;
+            _this._projectionMatrix.m33 = 1;
+            _this._projectionMatrix.m34 = 0;
+            _this._projectionMatrix.m41 = -1;
+            _this._projectionMatrix.m42 = 1;
+            _this._projectionMatrix.m43 = 0;
+            _this._projectionMatrix.m44 = 1;
+            return _this;
+        }
+        Object.defineProperty(Batcher.prototype, "transformMatrix", {
+            /**
+             * 创建投影矩阵时要使用的矩阵
+             */
+            get: function () {
+                return this._transformMatrix;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Batcher.prototype.disposed = function () {
+            this.dispose(true);
+        };
+        Batcher.prototype.dispose = function (disposing) {
+            if (!this.isDisposed && disposing) {
+                this._spriteEffect = null;
+            }
+            _super.prototype.dispose.call(this, disposing);
+        };
+        Batcher.prototype.begin = function (effect, transformationMatrix, disableBatching) {
+            if (disableBatching === void 0) { disableBatching = false; }
+            es.Insist.isFalse(this._beginCalled, "在最后一次调用Begin后，在调用End之前已经调用了Begin。在End被成功调用之前，不能再调用Begin");
+            this._beginCalled = true;
+            this._customEffect = effect;
+            this._transformMatrix = transformationMatrix;
+            this._disableBatching = disableBatching;
+            if (this._disableBatching)
+                this.prepRenderState();
+        };
+        Batcher.prototype.end = function () {
+            es.Insist.isTrue(this._beginCalled, "End已经被调用，但Begin还没有被调用。在调用End之前，必须先成功调用Begin");
+            this._beginCalled = false;
+            if (!this._disableBatching)
+                this.flushBatch();
+            this._customEffect = null;
+        };
+        Batcher.prototype.prepRenderState = function () {
+            var viewport = this.graphicsDevice.viewport;
+            this._projectionMatrix.m11 = 2 / viewport.width;
+            this._projectionMatrix.m22 = -2 / viewport.height;
+            this._projectionMatrix.m41 = -1 - 0.5 * this._projectionMatrix.m11;
+            this._projectionMatrix.m42 = 1 - 0.5 * this._projectionMatrix.m22;
+            es.Matrix.multiply(this._transformMatrix, this._projectionMatrix, this._matrixTransformMatrix);
+            this._spriteEffect.setMatrixTransform(this._matrixTransformMatrix);
+        };
+        /**
+         * 设置是否应忽略位置舍入。在为调试绘制基元时很有用
+         * @param shouldIgnore
+         */
+        Batcher.prototype.setIgnoreRoundingDestinations = function (shouldIgnore) {
+            this._shouldIgnoreRoundingDestinations = shouldIgnore;
+        };
+        Batcher.prototype.drawHollowRect = function (rect, color, thickness) {
+            if (thickness === void 0) { thickness = 1; }
+            this.drawHollowBounds(rect.x, rect.y, rect.width, rect.height, color, thickness);
+        };
+        Batcher.prototype.drawHollowBounds = function (x, y, width, height, color, thickness) {
+            if (thickness === void 0) { thickness = 1; }
+            var tl = es.Vector2Ext.round(new es.Vector2(x, y));
+            var tr = es.Vector2Ext.round(new es.Vector2(x + width, y));
+            var br = es.Vector2Ext.round(new es.Vector2(x + width, y + height));
+            var bl = es.Vector2Ext.round(new es.Vector2(x, y + height));
+            this.setIgnoreRoundingDestinations(true);
+            this.drawLine(tl, tr, color, thickness);
+            this.drawLine(tr, br, color, thickness);
+            this.drawLine(br, bl, color, thickness);
+            this.drawLine(bl, tl, color, thickness);
+            this.setIgnoreRoundingDestinations(false);
+        };
+        Batcher.prototype.drawLine = function (start, end, color, thickness) {
+            this.drawLineAngle(start, es.MathHelper.angleBetweenVectors(start, end), es.Vector2.distance(start, end), color, thickness);
+        };
+        Batcher.prototype.drawLineAngle = function (start, radians, length, color, thickness) {
+        };
+        Batcher.prototype.drawPixel = function (position, color, size) {
+            if (size === void 0) { size = 1; }
+            var destRect = new es.Rectangle(position.x, position.y, size, size);
+            if (size != 1) {
+                destRect.x -= size * 0.5;
+                destRect.y -= size * 0.5;
+            }
+        };
+        Batcher.prototype.drawPolygon = function (position, points, color, closePoly, thickness) {
+            if (closePoly === void 0) { closePoly = true; }
+            if (thickness === void 0) { thickness = 1; }
+            if (points.length < 2)
+                return;
+            this.setIgnoreRoundingDestinations(true);
+            for (var i = 1; i < points.length; i++)
+                this.drawLine(es.Vector2.add(position, points[i - 1]), es.Vector2.add(position, points[i]), color, thickness);
+            if (closePoly)
+                this.drawLine(es.Vector2.add(position, points[points.length - 1]), es.Vector2.add(position, points[0]), color, thickness);
+            this.setIgnoreRoundingDestinations(false);
+        };
+        Batcher.prototype.drawCircle = function (position, radius, color, thickness, resolution) {
+            if (thickness === void 0) { thickness = 1; }
+            if (resolution === void 0) { resolution = 12; }
+            var last = es.Vector2.unitX.multiply(new es.Vector2(radius));
+            var lastP = es.Vector2Ext.perpendicularFlip(last);
+            this.setIgnoreRoundingDestinations(true);
+            for (var i = 1; i <= resolution; i++) {
+                var at = es.MathHelper.angleToVector(i * es.MathHelper.PiOver2 / resolution, radius);
+                var atP = es.Vector2Ext.perpendicularFlip(at);
+                this.drawLine(es.Vector2.add(position, last), es.Vector2.add(position, at), color, thickness);
+                this.drawLine(es.Vector2.subtract(position, last), es.Vector2.subtract(position, at), color, thickness);
+                this.drawLine(es.Vector2.add(position, lastP), es.Vector2.add(position, atP), color, thickness);
+                this.drawLine(es.Vector2.subtract(position, lastP), es.Vector2.subtract(position, atP), color, thickness);
+                last = at;
+                lastP = atP;
+            }
+            this.setIgnoreRoundingDestinations(false);
+        };
+        Batcher.prototype.draw = function (texture, position) {
+            this.checkBegin();
+            this.pushSprite(texture, null, position.x, position.y, 1, 1, 0xffffff, es.Vector2.zero, 0, 0, 0, false, 0, 0, 0, 0);
+        };
+        Batcher.prototype.checkBegin = function () {
+            if (!this._beginCalled)
+                throw new Error("Begin还没有被叫到。在你画画之前，必须先调用Begin");
+        };
+        Batcher.prototype.pushSprite = function (texture, sourceRectangle, destinationX, destinationY, destinationW, destinationH, color, origin, rotation, depth, effects, destSizeInPixels, skewTopX, skewBottomX, skewLeftY, skewRightY) {
+            if (sourceRectangle === void 0) { sourceRectangle = null; }
+            if (this._numSprites >= this.MAX_SPRITES)
+                this.flushBatch();
+            if (!this._shouldIgnoreRoundingDestinations && this.shouldRoundDestinations) {
+                destinationX = Math.round(destinationX);
+                destinationY = Math.round(destinationY);
+            }
+            var sourceX, sourceY, sourceW, sourceH;
+            var originX, originY;
+            if (sourceRectangle) {
+                var inverseTexW = 1 / texture.width;
+                var inverseTexH = 1 / texture.height;
+                sourceX = sourceRectangle.x * inverseTexW;
+                sourceY = sourceRectangle.y * inverseTexH;
+                sourceW = sourceRectangle.width * inverseTexW;
+                sourceH = sourceRectangle.height * inverseTexH;
+                originX = (origin.x / sourceW) * inverseTexW;
+                originY = (origin.y / sourceH) * inverseTexH;
+                if (!destSizeInPixels) {
+                    destinationW *= sourceRectangle.width;
+                    destinationH *= sourceRectangle.height;
+                }
+            }
+            else {
+                sourceX = 0;
+                sourceY = 0;
+                sourceW = 1;
+                sourceH = 1;
+                originX = origin.x * (1 / texture.width);
+                originY = origin.y * (1 / texture.height);
+                if (!destSizeInPixels) {
+                    destinationW *= texture.width;
+                    destinationH *= texture.height;
+                }
+            }
+            var rotationMatrix1X;
+            var rotationMatrix1Y;
+            var rotationMatrix2X;
+            var rotationMatrix2Y;
+            if (!es.MathHelper.withinEpsilon(rotation)) {
+                var sin = Math.sin(rotation);
+                var cos = Math.cos(rotation);
+                rotationMatrix1X = cos;
+                rotationMatrix1Y = sin;
+                rotationMatrix2X = -sin;
+                rotationMatrix2Y = cos;
+            }
+            else {
+                rotationMatrix1X = 1;
+                rotationMatrix1Y = 0;
+                rotationMatrix2X = 0;
+                rotationMatrix2Y = 1;
+            }
+            // 如果我们有一个翻转的精灵，则翻转我们的倾斜值
+            if (effects != 0) {
+                skewTopX *= -1;
+                skewBottomX *= -1;
+                skewLeftY *= -1;
+                skewRightY *= -1;
+            }
+            var cornerX = (Batcher._cornerOffsetX[0] - originX) * destinationW + skewTopX;
+            var cornerY = (Batcher._cornerOffsetY[0] - originY) * destinationH - skewLeftY;
+            if (this._disableBatching) {
+                this.drawPrimitives(texture, 0, 1);
+            }
+            else {
+                this._textureInfo[this._numSprites] = texture;
+                this._numSprites += 1;
+            }
+        };
+        Batcher.prototype.flushBatch = function () {
+            if (this._numSprites == 0)
+                return;
+            var offset = 0;
+            var curTexture = null;
+            this.prepRenderState();
+            curTexture = this._textureInfo[0];
+            for (var i = 1; i < this._numSprites; i += 1) {
+                if (this._textureInfo[i] != curTexture) {
+                    this.drawPrimitives(curTexture, offset, i - offset);
+                    curTexture = this._textureInfo[i];
+                    offset = i;
+                }
+            }
+            this.drawPrimitives(curTexture, offset, this._numSprites - offset);
+            this._numSprites = 0;
+        };
+        Batcher.prototype.drawPrimitives = function (texture, baseSprite, batchSize) {
+            var buffer = egret.sys.customHitTestBuffer;
+            if (this._customEffect != null) {
+            }
+            else {
+            }
+        };
+        Batcher._cornerOffsetX = [0, 1, 0, 1];
+        Batcher._cornerOffsetY = [0, 0, 1, 1];
+        return Batcher;
+    }(es.GraphicsResource));
+    es.Batcher = Batcher;
+})(es || (es = {}));
+var es;
+(function (es) {
+    var SpriteEffect = /** @class */ (function (_super) {
+        __extends(SpriteEffect, _super);
+        function SpriteEffect() {
+            return _super.call(this, SpriteEffect.defaultVert, SpriteEffect.primitive_frag) || this;
+        }
+        SpriteEffect.prototype.setMatrixTransform = function (matrixTransform) {
+            this.uniforms["MatrixTransform"] = matrixTransform;
+        };
+        SpriteEffect.defaultVert = "attribute vec2 aVertexPosition;\r\nattribute vec2 aTextureCoord;\r\nattribute vec4 aColor;\r\n\r\nuniform vec2 projectionVector;\r\n// uniform vec2 offsetVector;\r\n\r\nvarying vec2 vTextureCoord;\r\nvarying vec4 vColor;\r\n\r\nconst vec2 center = vec2(-1.0, 1.0);\r\n\r\nvoid main(void) {\r\n   gl_Position = vec4( (aVertexPosition / projectionVector) + center , 0.0, 1.0);\r\n   vTextureCoord = aTextureCoord;\r\n   vColor = aColor;\r\n}";
+        SpriteEffect.primitive_frag = "precision lowp float;\r\nvarying vec2 vTextureCoord;\r\nvarying vec4 vColor;\r\n\r\nvoid main(void) {\r\n    gl_FragColor = vColor;\r\n}";
+        return SpriteEffect;
+    }(egret.CustomFilter));
+    es.SpriteEffect = SpriteEffect;
+})(es || (es = {}));
+var es;
+(function (es) {
+    /**
+     * 渲染器被添加到一个场景中，并处理所有对RenderableComponent.render和Entity.debugRender的实际调用。
+     * 一个简单的渲染器可以直接启动Batcher.instanceGraphics.batcher，也可以创建自己的本地Batcher实例
+     */
+    var Renderer = /** @class */ (function () {
+        function Renderer(renderOrder, camera) {
+            if (camera === void 0) { camera = null; }
+            /** Batcher使用的材料。任何RenderableComponent都可以覆盖它 */
+            this.material = es.Material.defaultMaterial;
+            /**
+             * 指定场景调用渲染器的顺序
+             */
+            this.renderOrder = 0;
+            /**
+             * 标志，决定是否要调试渲染。
+             * 渲染方法接收一个bool(debugRenderEnabled)让渲染器知道全局调试渲染是否开启/关闭。
+             * 然后渲染器使用本地的bool来决定是否应该调试渲染
+             */
+            this.shouldDebugRender = true;
+            this.camera = camera;
+            this.renderOrder = renderOrder;
+        }
+        Object.defineProperty(Renderer.prototype, "wantsToRenderToSceneRenderTarget", {
+            /**
+             * 如果为true，场景将使用场景RenderTarget调用SetRenderTarget。
+             * 如果Renderer有一个renderTexture，默认的实现会返回true
+             */
+            get: function () {
+                return this.renderTexture == null;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        /**
+         * 当Renderer被添加到场景中时被调用
+         * @param scene
+         */
+        Renderer.prototype.onAddedToScene = function (scene) {
+        };
+        /**
+         * 当场景结束或该渲染器从场景中移除时，调用该函数，用于清理
+         */
+        Renderer.prototype.unload = function () {
+            this.renderTexture && this.renderTexture.dispose();
+        };
+        /**
+         * 如果使用了RenderTarget，这将会对其进行设置。
+         * Batcher也会被启动。传
+         * 递进来的Camera将被用来设置ViewPort（如果有ViewportAdapter）和Batcher变换矩阵
+         * @param cam
+         */
+        Renderer.prototype.beginRender = function (cam) {
+            // 如果我们有一个renderTarget渲染进去
+            if (this.renderTexture != null) {
+            }
+            this._currentMaterial = this.material;
+            es.Graphics.instance.batcher.begin(this._currentMaterial.effect, es.Matrix2D.toMatrix(cam.transformMatrix));
+        };
+        /**
+         * 渲染RenderableComponent冲洗Batcher，并在必要时重置当前材料
+         * @param renderable
+         * @param cam
+         */
+        Renderer.prototype.renderAfterStateCheck = function (renderable, cam) {
+            if (renderable.material != null && renderable.material != this._currentMaterial) {
+                this._currentMaterial = renderable.material;
+                if (this._currentMaterial.effect != null)
+                    this._currentMaterial.onPreRender(cam);
+                this.flushBatch(cam);
+            }
+            else if (renderable.material == null && this._currentMaterial != this.material) {
+                this._currentMaterial = this.material;
+                this.flushBatch(cam);
+            }
+            renderable.render(es.Graphics.instance.batcher, cam);
+        };
+        /**
+         * 通过呼叫结束然后开始，强行刷新Batcher
+         * @param cam
+         */
+        Renderer.prototype.flushBatch = function (cam) {
+            es.Graphics.instance.batcher.end();
+            es.Graphics.instance.batcher.begin(this._currentMaterial.effect, es.Matrix2D.toMatrix(cam.transformMatrix));
+        };
+        /**
+         * 结束Batcher并清除RenderTarget（如果有RenderTarget）
+         */
+        Renderer.prototype.endRender = function () {
+            es.Graphics.instance.batcher.end();
+        };
+        /**
+         * 默认的debugRender方法只是循环浏览所有实体并调用entity.debugRender。
+         * 请注意，此时你正处于一个批次的中间，所以你可能需要调用Batcher.End和Batcher.begin来清除任何等待渲染的材料和项目
+         * @param scene
+         * @param cam
+         */
+        Renderer.prototype.debugRender = function (scene, cam) {
+            es.Graphics.instance.batcher.end();
+            es.Graphics.instance.batcher.begin(null, es.Matrix2D.toMatrix(cam.transformMatrix));
+            for (var _i = 0, _a = scene.entities.buffer; _i < _a.length; _i++) {
+                var entity = _a[_i];
+                if (entity.enabled)
+                    entity.debugRender(es.Graphics.instance.batcher);
+            }
+        };
+        /**
+         * 当默认的场景RenderTarget被调整大小时，以及在场景已经开始的情况下添加一个Renderer时，会被调用。
+         * @param newWidth
+         * @param newHeight
+         */
+        Renderer.prototype.onSceneBackBufferSizeChanged = function (newWidth, newHeight) { };
+        Renderer.prototype.compare = function (other) {
+            return this.renderOrder - other.renderOrder;
+        };
+        return Renderer;
+    }());
+    es.Renderer = Renderer;
+})(es || (es = {}));
+///<reference path="./Renderer.ts" />
+var es;
+///<reference path="./Renderer.ts" />
+(function (es) {
+    var DefaultRenderer = /** @class */ (function (_super) {
+        __extends(DefaultRenderer, _super);
+        function DefaultRenderer(renderOrder, camera) {
+            if (renderOrder === void 0) { renderOrder = 0; }
+            if (camera === void 0) { camera = null; }
+            return _super.call(this, renderOrder, camera) || this;
+        }
+        DefaultRenderer.prototype.render = function (scene) {
+            var cam = this.camera || scene.camera;
+            this.beginRender(cam);
+            for (var i = 0; i < scene.renderableComponents.count; i++) {
+                var renderable = scene.renderableComponents.get(i);
+                if (renderable.enabled && renderable.isVisibleFromCamera(cam))
+                    this.renderAfterStateCheck(renderable, cam);
+            }
+            if (this.shouldDebugRender && es.Core.debugRenderEndabled)
+                this.debugRender(scene, cam);
+            this.endRender();
+        };
+        return DefaultRenderer;
+    }(es.Renderer));
+    es.DefaultRenderer = DefaultRenderer;
+})(es || (es = {}));
+var es;
+(function (es) {
+    /**
+     * 代表纹理图谱中的单个元素，由纹理和帧的源矩形组成
+     */
+    var Sprite = /** @class */ (function () {
+        function Sprite(texture, sourceRect, origin) {
+            if (sourceRect === void 0) { sourceRect = new es.Rectangle(0, 0, texture.textureWidth, texture.textureHeight); }
+            if (origin === void 0) { origin = sourceRect.getHalfSize(); }
+            /** 纹理区域的UVs */
+            this.uvs = new es.Rectangle();
+            this.texture2D = texture;
+            this.sourceRect = sourceRect;
+            this.center = new es.Vector2(sourceRect.width * 0.5, sourceRect.height * 0.5);
+            this.origin = origin;
+            var inverseTexW = 1 / texture.textureWidth;
+            var inverseTexH = 1 / texture.textureHeight;
+            this.uvs.x = sourceRect.x * inverseTexW;
+            this.uvs.y = sourceRect.y * inverseTexH;
+            this.uvs.width = sourceRect.width * inverseTexW;
+            this.uvs.height = sourceRect.height * inverseTexH;
+        }
+        Sprite.prototype.clone = function () {
+            return new Sprite(this.texture2D, this.sourceRect, this.origin);
+        };
+        /**
+         * 提供一个Sprites列表，给定一个等行/等列的Sprites图集
+         * @param texture
+         * @param cellWidth
+         * @param cellHeight
+         * @param cellOffset 处理时要包含的第一个单元格。基于0的索引
+         * @param maxCellsToInclude 包含的最大单元
+         */
+        Sprite.spritesFromAtlas = function (texture, cellWidth, cellHeight, cellOffset, maxCellsToInclude) {
+            if (cellOffset === void 0) { cellOffset = 0; }
+            if (maxCellsToInclude === void 0) { maxCellsToInclude = Number.MAX_VALUE; }
+            var sprites = [];
+            var cols = texture.textureWidth / cellWidth;
+            var rows = texture.textureHeight / cellHeight;
+            var i = 0;
+            var spriteSheet = new egret.SpriteSheet(texture);
+            for (var y = 0; y < rows; y++) {
+                for (var x = 0; x < cols; x++) {
+                    // 跳过第一个cellOffset之前的所有内容
+                    if (i++ < cellOffset)
+                        continue;
+                    var texture_1 = spriteSheet.getTexture(y + "_" + x);
+                    if (!texture_1)
+                        texture_1 = spriteSheet.createTexture(y + "_" + x, x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+                    sprites.push(new Sprite(texture_1));
+                    if (sprites.length == maxCellsToInclude)
+                        return sprites;
+                }
+            }
+            return sprites;
+        };
+        return Sprite;
+    }());
+    es.Sprite = Sprite;
+})(es || (es = {}));
+var es;
+(function (es) {
+    /**
+     * SceneTransition用于从一个场景过渡到另一个场景或在一个场景内用效果过渡。
+     * 如果 sceneLoadAction 为空，框架 将执行场景内的转换，而不是在转换过程中加载一个新的场景。
+     *
+     * 过渡的一般要领如下。
+     * - onBeginTransition将被调用，允许你为多部分转换让步。
+     * - 对于带有效果的两部分过渡，你可以在调用TickEffectProgressProperty时让位于第一部分，以遮挡屏幕。
+     * - 产生调用loadNextScene来加载新的Scene。
+     * - 在TickEffectProgressProperty上再次屈服，以解除对屏幕的遮挡并显示新的场景。
+     */
+    var SceneTransition = /** @class */ (function () {
+        function SceneTransition(sceneLoadAction) {
+            if (sceneLoadAction === void 0) { sceneLoadAction = null; }
+            this.sceneLoadAction = sceneLoadAction;
+            this._loadsNewScene = sceneLoadAction != null;
+        }
+        Object.defineProperty(SceneTransition.prototype, "hasPreviousSceneRender", {
+            /**
+             * 在内部用于决定前一个场景是否应该渲染到 previousSceneRender 中。
+             * 做双重任务，确保渲染只发生一次。
+             */
+            get: function () {
+                if (!this._hasPreviousSceneRender) {
+                    this._hasPreviousSceneRender = true;
+                    return false;
+                }
+                return true;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        SceneTransition.prototype.loadNextScene = function () {
+            var _this = this;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        this.onScreenObscured && this.onScreenObscured();
+                        if (!!this._loadsNewScene) return [3 /*break*/, 2];
+                        this._isNewSceneLoaded = true;
+                        return [4 /*yield*/, 'break'];
+                    case 1:
+                        _a.sent();
+                        _a.label = 2;
+                    case 2:
+                        if (this.loadSceneOnBackgroundThread) {
+                            Promise.resolve(function () {
+                                var scene = _this.sceneLoadAction();
+                                es.Core.schedule(0, false, null, function (timer) {
+                                    es.Core.scene = scene;
+                                    _this._isNewSceneLoaded = true;
+                                });
+                            });
+                        }
+                        else {
+                            es.Core.scene = this.sceneLoadAction();
+                            this._isNewSceneLoaded = true;
+                        }
+                        _a.label = 3;
+                    case 3:
+                        if (!!this._isNewSceneLoaded) return [3 /*break*/, 5];
+                        return [4 /*yield*/, null];
+                    case 4:
+                        _a.sent();
+                        return [3 /*break*/, 3];
+                    case 5: return [2 /*return*/];
+                }
+            });
+        };
+        /**
+         * 这时你可以在产生一帧后加载你的新场景（所以第一次渲染调用发生在场景加载之前）
+         */
+        SceneTransition.prototype.onBeginTransition = function () {
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0: return [4 /*yield*/, null];
+                    case 1:
+                        _a.sent();
+                        return [4 /*yield*/, es.Core.startCoroutine(this.loadNextScene())];
+                    case 2:
+                        _a.sent();
+                        this.transitionComplete();
+                        return [2 /*return*/];
+                }
+            });
+        };
+        /**
+         * 在渲染场景之前被调用
+         * @param batcher
+         */
+        SceneTransition.prototype.preRener = function (batcher) {
+        };
+        /**
+         * 在这里做所有的渲染.static 这是一个基本的实现。任何特殊的渲染都应该覆盖这个方法。
+         * @param batcher
+         */
+        SceneTransition.prototype.render = function (batcher) {
+            batcher.begin(null, es.Matrix2D.toMatrix(es.Matrix2D.identity), false);
+            batcher.draw(this.previousSceneRender, es.Vector2.zero);
+            batcher.end();
+        };
+        /**
+         * 当你的转换完成并且新的场景被设置后，这个函数将被调用。
+         */
+        SceneTransition.prototype.transitionComplete = function () {
+            es.Core._instance._sceneTransition = null;
+            if (this.previousSceneRender != null) {
+                this.previousSceneRender.texture.dispose();
+                this.previousSceneRender = null;
+            }
+            this.onTransitionCompleted && this.onTransitionCompleted();
+        };
+        /**
+         * 最常见的过渡类型似乎是将进度从0-1，如果你的过渡需要在场景加载后有一个_progress属性，这个方法就能帮你解决这个问题
+         * @param effect
+         * @param duration
+         * @param easeType
+         * @param reverseDirection
+         */
+        SceneTransition.prototype.tickEffectProgressProperty = function (effect, duration, easeType, reverseDirection) {
+            var start, end, elapsed, step;
+            if (reverseDirection === void 0) { reverseDirection = false; }
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        start = reverseDirection ? 1 : 0;
+                        end = reverseDirection ? 0 : 1;
+                        elapsed = 0;
+                        _a.label = 1;
+                    case 1:
+                        if (!(elapsed < duration)) return [3 /*break*/, 3];
+                        elapsed += es.Time.deltaTime;
+                        step = 0;
+                        effect.uniforms['_progress'] = step;
+                        return [4 /*yield*/, null];
+                    case 2:
+                        _a.sent();
+                        return [3 /*break*/, 1];
+                    case 3: return [2 /*return*/];
+                }
+            });
+        };
+        return SceneTransition;
+    }());
+    es.SceneTransition = SceneTransition;
 })(es || (es = {}));

@@ -1,6 +1,6 @@
 ///<reference path="./GraphicsResource.ts" />
 module es {
-    export class Batcher extends GraphicsResource {
+    export class Batcher extends GraphicsResource implements IBatcher {
         /**
          * 创建投影矩阵时要使用的矩阵
          */
@@ -66,6 +66,10 @@ module es {
             this._projectionMatrix.m44 = 1;
         }
 
+        public disposed() {
+            this.dispose(true);
+        }
+
         protected dispose(disposing: boolean) {
             if (!this.isDisposed && disposing) {
                 this._spriteEffect = null;
@@ -74,7 +78,7 @@ module es {
             super.dispose(disposing);
         }
 
-        public begin(effect: egret.CustomFilter, transformationMatrix: Matrix, disableBatching: boolean) {
+        public begin(effect: egret.CustomFilter, transformationMatrix: Matrix, disableBatching: boolean = false) {
             Insist.isFalse(this._beginCalled, "在最后一次调用Begin后，在调用End之前已经调用了Begin。在End被成功调用之前，不能再调用Begin");
             this._beginCalled = true;
 
@@ -140,6 +144,49 @@ module es {
 
         public drawLineAngle(start: Vector2, radians: number, length: number, color: number, thickness: number) {
 
+        }
+
+        public drawPixel(position: Vector2, color: number, size: number = 1) {
+            let destRect = new Rectangle(position.x, position.y, size, size);
+            if (size != 1) {
+                destRect.x -= size * 0.5;
+                destRect.y -= size * 0.5;
+            }
+        }
+
+        public drawPolygon(position: Vector2, points: Vector2[], color: number,
+            closePoly: boolean = true, thickness: number = 1) {
+            if (points.length < 2)
+                return;
+
+            this.setIgnoreRoundingDestinations(true);
+            for (let i = 1; i < points.length; i++)
+                this.drawLine(Vector2.add(position, points[i - 1]), Vector2.add(position, points[i]), color, thickness);
+
+            if (closePoly)
+                this.drawLine(Vector2.add(position, points[points.length - 1]), Vector2.add(position, points[0]), color, thickness);
+            this.setIgnoreRoundingDestinations(false);
+        }
+
+        public drawCircle(position: Vector2, radius: number, color: number, thickness: number = 1, resolution: number = 12) {
+            let last = Vector2.unitX.multiply(new Vector2(radius));
+            let lastP = Vector2Ext.perpendicularFlip(last);
+
+            this.setIgnoreRoundingDestinations(true);
+            for (let i = 1; i <= resolution; i++) {
+                let at = MathHelper.angleToVector(i * MathHelper.PiOver2 / resolution, radius);
+                let atP = Vector2Ext.perpendicularFlip(at);
+
+                this.drawLine(Vector2.add(position, last), Vector2.add(position, at), color, thickness);
+                this.drawLine(Vector2.subtract(position, last), Vector2.subtract(position, at), color, thickness);
+                this.drawLine(Vector2.add(position, lastP), Vector2.add(position, atP), color, thickness);
+                this.drawLine(Vector2.subtract(position, lastP), Vector2.subtract(position, atP), color, thickness);
+
+                last = at;
+                lastP = atP;
+            }
+
+            this.setIgnoreRoundingDestinations(false);
         }
 
         public draw(texture: egret.DisplayObject, position: Vector2) {
@@ -261,7 +308,7 @@ module es {
         public drawPrimitives(texture: egret.DisplayObject, baseSprite: number, batchSize: number) {
             let buffer = egret.sys.customHitTestBuffer;
             if (this._customEffect != null) {
-                egret.sys.systemRenderer.render(texture, buffer,)
+
             } else {
 
             }
