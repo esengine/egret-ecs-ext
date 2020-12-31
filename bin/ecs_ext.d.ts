@@ -27,11 +27,6 @@ declare module es {
          * 用于确定是否应该使用EntitySystems
          */
         static entitySystemsEnabled: boolean;
-        /**
-         * 是否使用自定义场景更新
-         * 如果使用请监听SceneUpdated
-         */
-        static useCustomUpdate: boolean;
         private _scene;
         private _nextScene;
         _sceneTransition: SceneTransition;
@@ -101,11 +96,32 @@ declare module es {
          */
         onSceneChanged(): void;
         /**
+         * 暂时运行SceneTransition，让一个场景通过自定义效果平滑地过渡到另一个场景
+         * @param sceneTransition
+         */
+        static startSceneTransition<T extends SceneTransition>(sceneTransition: T): T;
+        /**
          * 当屏幕大小发生改变时调用
          */
         protected onGraphicsDeviceReset(): void;
         protected initialize(): void;
         protected update(currentTime?: number): Promise<void>;
+        protected draw(): void;
+    }
+}
+declare module es {
+    /**
+     * 这里存放专门处理平台用的事件
+     */
+    class PlatformEvent {
+        static initialize(): void;
+        private static addDefaultRenderer;
+        private static clearGraphics;
+        private static createRenderTarget;
+        private static disposeRenderTarget;
+        private static setRenderTarget;
+        private static setResolutionOffset;
+        private static setResuolutionScale;
     }
 }
 declare module es {
@@ -553,6 +569,25 @@ declare module es {
     }
 }
 declare module es {
+    /**
+     * 定义镜像的精灵可视化选项
+     */
+    enum SpriteEffects {
+        /**
+         * 没有指定选项
+         */
+        none = 0,
+        /**
+         * 沿X轴反向渲染精灵
+         */
+        flipHorizontally = 1,
+        /**
+         * 沿Y轴反向渲染精灵
+         */
+        flipVertically = 2
+    }
+}
+declare module es {
     /** 描述渲染目标表面的视图边界 */
     class Viewport {
         x: number;
@@ -580,7 +615,7 @@ declare module es {
     /**
      * 这个类的存在只是为了让我们可以偷偷地把Batcher带过去
      */
-    abstract class GraphicsResource {
+    abstract class GraphicsResource extends egret.DisplayObjectContainer {
         graphicsDevice: GraphicsDevice;
         isDisposed: boolean;
         private _graphicsDevice;
@@ -609,13 +644,14 @@ declare module es {
         private _projectionMatrix;
         private _matrixTransformMatrix;
         private _customEffect;
+        private _displayObject;
         private readonly MAX_SPRITES;
         static readonly _cornerOffsetX: number[];
         static readonly _cornerOffsetY: number[];
         constructor(graphicsDevice: GraphicsDevice);
         disposed(): void;
         protected dispose(disposing: boolean): void;
-        begin(effect: egret.CustomFilter, transformationMatrix: Matrix, disableBatching?: boolean): void;
+        begin(effect: egret.CustomFilter, transformationMatrix?: Matrix, disableBatching?: boolean): void;
         end(): void;
         prepRenderState(): void;
         /**
@@ -630,11 +666,11 @@ declare module es {
         drawPixel(position: Vector2, color: number, size?: number): void;
         drawPolygon(position: Vector2, points: Vector2[], color: number, closePoly?: boolean, thickness?: number): void;
         drawCircle(position: Vector2, radius: number, color: number, thickness?: number, resolution?: number): void;
-        draw(texture: egret.DisplayObject, position: Vector2): void;
+        draw(texture: egret.Texture, position: Vector2, color?: number, rotation?: number, origin?: Vector2, scale?: Vector2, effects?: SpriteEffects): void;
         private checkBegin;
         private pushSprite;
         flushBatch(): void;
-        drawPrimitives(texture: egret.DisplayObject, baseSprite: number, batchSize: number): void;
+        drawPrimitives(texture: egret.Texture, baseSprite: number, batchSize: number): void;
     }
 }
 declare module es {
@@ -784,7 +820,17 @@ declare module es {
      * - 在TickEffectProgressProperty上再次屈服，以解除对屏幕的遮挡并显示新的场景。
      */
     abstract class SceneTransition {
-        previousSceneRender: egret.Bitmap;
+        /**
+         * 包含上一个场景的最后渲染。可以用来在加载新场景时遮挡屏幕
+         */
+        previousSceneRender: egret.RenderTexture;
+        /**
+         * 如果为真，框架将把前一个场景渲染到 previousSceneRender 中，这样你就可以用它来做过渡。
+         */
+        wantsPreviousSceneRender: boolean;
+        /**
+         * 如果为true，下一个场景将在后台线程上加载
+         */
         loadSceneOnBackgroundThread: boolean;
         /**
          * 应该返回新加载的场景的函数
@@ -813,12 +859,12 @@ declare module es {
          * 对于场景内的转场，_isNewSceneLoaded应该在中间点设置为true，就像加载了一个新的场景一样
          */
         _isNewSceneLoaded: boolean;
-        constructor(sceneLoadAction?: () => Scene);
+        constructor(sceneLoadAction?: () => Scene, wantsPreviousSceneRender?: boolean);
         protected loadNextScene(): IterableIterator<string>;
         /**
          * 这时你可以在产生一帧后加载你的新场景（所以第一次渲染调用发生在场景加载之前）
          */
-        onBeginTransition(): IterableIterator<ICoroutine>;
+        onBeginTransition(): any;
         /**
          * 在渲染场景之前被调用
          * @param batcher
@@ -840,6 +886,70 @@ declare module es {
          * @param easeType
          * @param reverseDirection
          */
-        tickEffectProgressProperty(effect: egret.CustomFilter, duration: number, easeType: any, reverseDirection?: boolean): IterableIterator<any>;
+        tickEffectProgressProperty(effect: egret.CustomFilter, duration: number, easeType?: EaseType, reverseDirection?: boolean): IterableIterator<any>;
+    }
+}
+declare module es {
+    /**
+     * 使用图像来遮蔽部分场景，从最大到最小，然后通过旋转从最小到最大。
+     * 过渡将为你卸载它。
+     * Texture应该在应该遮蔽的地方是透明的，在应该遮蔽的地方是白色的
+     */
+    class ImageMaskTransition extends SceneTransition {
+        /**
+         * 出入时间
+         */
+        duration: number;
+        /**
+         * 遮罩后，在标记开始前的延迟时间
+         */
+        delayBeforeMaskOut: number;
+        /**
+         * 遮罩的最小比例
+         */
+        minScale: number;
+        /**
+         * 遮罩的最大比例
+         */
+        maxScale: number;
+        /**
+         * 用来制作比例动画的简易公式
+         */
+        scaleEaseType: EaseType;
+        /**
+         * 遮罩动画的最小旋转次数
+         */
+        minRotation: number;
+        /**
+         * 遮罩动画的最大旋转次数
+         */
+        maxRotation: number;
+        /**
+         * 用于旋转动画的简易方程
+         */
+        rotationEaseType: EaseType;
+        private _renderScale;
+        private _renderRotation;
+        /**
+         * 用作遮罩的纹理。在遮罩显示底层场景的地方应该是白色的，其他地方应该是透明的
+         */
+        private _maskTexture;
+        /**
+         * 遮罩的位置，屏幕的中心
+         */
+        private _maskPosition;
+        /**
+         * 遮罩的原点，纹理的中心
+         */
+        private _maskOrigin;
+        /**
+         * 遮罩首先被渲染成一个RenderTarget
+         */
+        private _maskRenderTarget;
+        constructor(sceneLoadAction: () => Scene, maskTexture: egret.Texture);
+        onBeginTransition(): any;
+        preRender(batcher: Batcher): void;
+        protected transitionComplete(): void;
+        render(batcher: Batcher): void;
     }
 }

@@ -47,10 +47,10 @@ module es {
 
             this.follow(this._targetEntity, this._cameraStyle);
 
-            Core.emitter.addObserver(CoreEvents.GraphicsDeviceReset, this.onGraphicsDeviceReset, this);
+            Core.emitter.addObserver(CoreEvents.graphicsDeviceReset, this.onGraphicsDeviceReset, this);
         }
 
-        public onGraphicsDeviceReset(){
+        public onGraphicsDeviceReset() {
             // 我们需要这个在下一帧触发 这样相机边界就会更新
             Core.schedule(0, false, this, t => {
                 let self = t.context as FollowCamera;
@@ -150,7 +150,7 @@ module es {
          * @param height
          */
         public setCenteredDeadzone(width: number, height: number) {
-            if (!this.camera){
+            if (!this.camera) {
                 console.error("相机是null。我们不能得到它的边界。请等到该组件添加到实体之后");
                 return;
             }

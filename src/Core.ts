@@ -27,11 +27,6 @@ module es {
          * 用于确定是否应该使用EntitySystems
          */
         public static entitySystemsEnabled: boolean;
-        /**
-         * 是否使用自定义场景更新
-         * 如果使用请监听SceneUpdated
-         */
-        public static useCustomUpdate: boolean = false;
 
         private _scene: Scene;
         private _nextScene: Scene;
@@ -55,14 +50,15 @@ module es {
             this.height = height;
 
             Core._instance = this;
-            Core.emitter = new Emitter<CoreEvents>();
-            Core.emitter.addObserver(CoreEvents.FrameUpdated, this.update, this);
+            Core.emitter = Framework.emitter;
 
             Core.registerGlobalManager(this._coroutineManager);
             Core.registerGlobalManager(this._timerManager);
             Core.entitySystemsEnabled = enableEntitySystems;
 
+            PlatformEvent.initialize();
             this.initialize();
+            this.addEventListener(egret.Event.ENTER_FRAME, this.update, this);
         }
 
         /**
@@ -157,7 +153,7 @@ module es {
         }
 
         public onOrientationChanged() {
-            Core.emitter.emit(CoreEvents.OrientationChanged);
+            Core.emitter.emit(CoreEvents.orientationChanged);
         }
 
         public startDebugDraw() {
@@ -178,9 +174,18 @@ module es {
          * 在一个场景结束后，下一个场景开始之前调用
          */
         public onSceneChanged() {
-            Core.emitter.emit(CoreEvents.SceneChanged);
+            Core.emitter.emit(CoreEvents.sceneChanged);
             Time.sceneChanged();
-            Core.emitter.emit(CoreEvents.CallGC);
+        }
+
+        /**
+         * 暂时运行SceneTransition，让一个场景通过自定义效果平滑地过渡到另一个场景
+         * @param sceneTransition 
+         */
+        public static startSceneTransition<T extends SceneTransition>(sceneTransition: T): T {
+            Insist.isNull(this._instance._sceneTransition, "在上一个场景转换完成之前，您不能启动新的场景转换");
+            this._instance._sceneTransition = sceneTransition;
+            return sceneTransition;
         }
 
         /**
@@ -193,7 +198,7 @@ module es {
             } else {
                 this._graphicsDeviceChangeTimer = Core.schedule(0.05, false, this, t => {
                     (t.context as Core)._graphicsDeviceChangeTimer = null;
-                    Core.emitter.emit(CoreEvents.GraphicsDeviceReset);
+                    Core.emitter.emit(CoreEvents.graphicsDeviceReset);
                 });
             }
         }
@@ -211,14 +216,10 @@ module es {
                         this._globalManagers[i].update();
                 }
 
-                if (Core.useCustomUpdate) {
-                    Core.emitter.emit(CoreEvents.SceneUpdated);
-                } else {
-                    if (this._sceneTransition == null ||
-                        (this._sceneTransition != null &&
-                            (!this._sceneTransition._loadsNewScene || this._sceneTransition._isNewSceneLoaded))) {
-                        this._scene.update();
-                    }
+                if (this._sceneTransition == null ||
+                    (this._sceneTransition != null &&
+                        (!this._sceneTransition._loadsNewScene || this._sceneTransition._isNewSceneLoaded))) {
+                    this._scene.update();
                 }
 
                 if (this._nextScene != null) {
@@ -232,8 +233,33 @@ module es {
                 }
             }
 
+            this.draw();
+        }
+
+        protected draw() {
             this.startDebugDraw();
-            Core.emitter.emit(CoreEvents.CallDraw);
+
+            if (this._sceneTransition != null)
+                this._sceneTransition.preRener(Graphics.instance.batcher);
+
+            // 如果有的话，我们会对SceneTransition进行特殊处理。我们要么渲染SceneTransition，要么渲染Scene的
+            if (this._sceneTransition != null) {
+                if (this._scene != null && this._sceneTransition.wantsPreviousSceneRender &&
+                    !this._sceneTransition.hasPreviousSceneRender) {
+                    this._scene.render();
+                    this._scene.postRender(this._sceneTransition.previousSceneRender);
+                    Core.startCoroutine(this._sceneTransition.onBeginTransition());
+                } else if (this._scene != null && this._sceneTransition._isNewSceneLoaded) {
+                    this._scene.render();
+                    this._scene.postRender();
+                }
+
+                this._sceneTransition.render(Graphics.instance.batcher);
+            } else if (this._scene != null) {
+                this._scene.render();
+
+                this._scene.postRender();
+            }
         }
     }
 }

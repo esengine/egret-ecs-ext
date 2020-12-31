@@ -10,7 +10,17 @@ module es {
      * - 在TickEffectProgressProperty上再次屈服，以解除对屏幕的遮挡并显示新的场景。
      */
     export abstract class SceneTransition {
-        public previousSceneRender: egret.Bitmap;
+        /**
+         * 包含上一个场景的最后渲染。可以用来在加载新场景时遮挡屏幕
+         */
+        public previousSceneRender: egret.RenderTexture;
+        /**
+         * 如果为真，框架将把前一个场景渲染到 previousSceneRender 中，这样你就可以用它来做过渡。
+         */
+        public wantsPreviousSceneRender: boolean;
+        /**
+         * 如果为true，下一个场景将在后台线程上加载
+         */
         public loadSceneOnBackgroundThread: boolean;
         /**
          * 应该返回新加载的场景的函数
@@ -49,9 +59,16 @@ module es {
          */
         public _isNewSceneLoaded: boolean;
 
-        constructor(sceneLoadAction: () => Scene = null) {
+        constructor(sceneLoadAction: () => Scene = null, wantsPreviousSceneRender: boolean = true) {
             this.sceneLoadAction = sceneLoadAction;
+            this.wantsPreviousSceneRender = wantsPreviousSceneRender;
             this._loadsNewScene = sceneLoadAction != null;
+
+            // 如果我们需要，可以创建一个RenderTexture，以备以后使用
+            if (wantsPreviousSceneRender) {
+                this.previousSceneRender = new egret.RenderTexture();
+                this.previousSceneRender.drawToTexture(Core.Instance);
+            }
         }
 
         protected * loadNextScene() {
@@ -83,7 +100,7 @@ module es {
         /**
          * 这时你可以在产生一帧后加载你的新场景（所以第一次渲染调用发生在场景加载之前）
          */
-        public * onBeginTransition() {
+        public * onBeginTransition(): any {
             yield null;
             yield Core.startCoroutine(this.loadNextScene());
 
@@ -115,7 +132,7 @@ module es {
             Core._instance._sceneTransition = null;
 
             if (this.previousSceneRender != null) {
-                this.previousSceneRender.texture.dispose();
+                this.previousSceneRender.dispose();
                 this.previousSceneRender = null;
             }
 

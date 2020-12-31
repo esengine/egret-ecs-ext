@@ -2,7 +2,7 @@ module es {
     /**
      * 这个类的存在只是为了让我们可以偷偷地把Batcher带过去
      */
-    export abstract class GraphicsResource {
+    export abstract class GraphicsResource extends egret.DisplayObjectContainer {
         public get graphicsDevice() {
             return this._graphicsDevice;
         }
