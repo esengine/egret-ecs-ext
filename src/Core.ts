@@ -23,10 +23,6 @@ module es {
          * 简化对内部类的全局内容实例的访问
          */
         public static _instance: Core;
-        /**
-         * 用于确定是否应该使用EntitySystems
-         */
-        public static entitySystemsEnabled: boolean;
 
         private _scene: Scene;
         private _nextScene: Scene;
@@ -41,24 +37,18 @@ module es {
         private _globalManagers: GlobalManager[] = [];
         private _coroutineManager: CoroutineManager = new CoroutineManager();
         private _timerManager: TimerManager = new TimerManager();
-        public width: number;
-        public height: number;
 
-        constructor(width: number, height: number, enableEntitySystems: boolean = true) {
+        constructor() {
             super();
-            this.width = width;
-            this.height = height;
 
             Core._instance = this;
             Core.emitter = Framework.emitter;
 
             Core.registerGlobalManager(this._coroutineManager);
             Core.registerGlobalManager(this._timerManager);
-            Core.entitySystemsEnabled = enableEntitySystems;
 
-            PlatformEvent.initialize();
-            this.initialize();
             this.addEventListener(egret.Event.ENTER_FRAME, this.update, this);
+            this.addEventListener(egret.Event.ADDED_TO_STAGE, this.initialize, this);
         }
 
         /**
@@ -206,10 +196,11 @@ module es {
         protected initialize() {
             Core.graphicsDevice = new GraphicsDevice(this.stage.stageWidth, this.stage.stageHeight);
             Graphics.instance = new Graphics();
+            PlatformEvent.initialize();
         }
 
-        protected async update(currentTime?: number) {
-            if (currentTime != null) Time.update(currentTime);
+        protected async update() {
+            Time.update(egret.getTimer());
             if (this._scene != null) {
                 for (let i = this._globalManagers.length - 1; i >= 0; i--) {
                     if (this._globalManagers[i].enabled)

@@ -14,6 +14,9 @@ module es {
             Core.emitter.addObserver(CoreEvents.setRenderTarget, this.setRenderTarget, this);
             Core.emitter.addObserver(CoreEvents.resolutionOffset, this.setResolutionOffset, this);
             Core.emitter.addObserver(CoreEvents.resolutionScale, this.setResuolutionScale, this);
+            Core.emitter.addObserver(CoreEvents.createCamera, this.createCamera, this);
+
+            Framework.batcher = Graphics.instance.batcher;
         }
 
         private static addDefaultRenderer() {
@@ -30,21 +33,28 @@ module es {
         }
 
         private static disposeRenderTarget(texture: Ref<egret.RenderTexture>) {
+            if (!texture || !texture.value) return;
             texture.value.dispose();
             texture.value = null;
         }
 
         private static setRenderTarget(texture: Ref<egret.RenderTexture>) {
+            if (!texture) texture = new Ref(null);
             texture.value = new egret.RenderTexture();
             texture.value.drawToTexture(Core.Instance);
         }
 
         private static setResolutionOffset(offset: Vector2) {
-
+            
         }
 
         private static setResuolutionScale(scale: Vector2) {
 
+        }
+
+        private static createCamera(scene: Scene) {
+            let cameraEntity = scene.createEntity("camera");
+            scene.camera = cameraEntity.addComponent(new Camera());
         }
     }
 }

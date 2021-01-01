@@ -50,8 +50,7 @@ var es;
      */
     var Core = /** @class */ (function (_super) {
         __extends(Core, _super);
-        function Core(width, height, enableEntitySystems) {
-            if (enableEntitySystems === void 0) { enableEntitySystems = true; }
+        function Core() {
             var _this = _super.call(this) || this;
             /**
              * 全局访问系统
@@ -62,16 +61,12 @@ var es;
             _this._frameCounterElapsedTime = 0;
             _this._frameCounter = 0;
             _this._totalMemory = 0;
-            _this.width = width;
-            _this.height = height;
             Core._instance = _this;
             Core.emitter = es.Framework.emitter;
             Core.registerGlobalManager(_this._coroutineManager);
             Core.registerGlobalManager(_this._timerManager);
-            Core.entitySystemsEnabled = enableEntitySystems;
-            es.PlatformEvent.initialize();
-            _this.initialize();
             _this.addEventListener(egret.Event.ENTER_FRAME, _this.update, _this);
+            _this.addEventListener(egret.Event.ADDED_TO_STAGE, _this.initialize, _this);
             return _this;
         }
         Object.defineProperty(Core, "Instance", {
@@ -213,13 +208,13 @@ var es;
         Core.prototype.initialize = function () {
             Core.graphicsDevice = new es.GraphicsDevice(this.stage.stageWidth, this.stage.stageHeight);
             es.Graphics.instance = new es.Graphics();
+            es.PlatformEvent.initialize();
         };
-        Core.prototype.update = function (currentTime) {
+        Core.prototype.update = function () {
             return __awaiter(this, void 0, void 0, function () {
                 var i;
                 return __generator(this, function (_a) {
-                    if (currentTime != null)
-                        es.Time.update(currentTime);
+                    es.Time.update(egret.getTimer());
                     if (this._scene != null) {
                         for (i = this._globalManagers.length - 1; i >= 0; i--) {
                             if (this._globalManagers[i].enabled)
@@ -296,6 +291,8 @@ var es;
             es.Core.emitter.addObserver(es.CoreEvents.setRenderTarget, this.setRenderTarget, this);
             es.Core.emitter.addObserver(es.CoreEvents.resolutionOffset, this.setResolutionOffset, this);
             es.Core.emitter.addObserver(es.CoreEvents.resolutionScale, this.setResuolutionScale, this);
+            es.Core.emitter.addObserver(es.CoreEvents.createCamera, this.createCamera, this);
+            es.Framework.batcher = es.Graphics.instance.batcher;
         };
         PlatformEvent.addDefaultRenderer = function () {
             es.Core.scene.addRenderer(new es.DefaultRenderer());
@@ -307,16 +304,24 @@ var es;
             texture.value.drawToTexture(es.Core.Instance, new egret.Rectangle(0, 0, width, height));
         };
         PlatformEvent.disposeRenderTarget = function (texture) {
+            if (!texture || !texture.value)
+                return;
             texture.value.dispose();
             texture.value = null;
         };
         PlatformEvent.setRenderTarget = function (texture) {
+            if (!texture)
+                texture = new es.Ref(null);
             texture.value = new egret.RenderTexture();
             texture.value.drawToTexture(es.Core.Instance);
         };
         PlatformEvent.setResolutionOffset = function (offset) {
         };
         PlatformEvent.setResuolutionScale = function (scale) {
+        };
+        PlatformEvent.createCamera = function (scene) {
+            var cameraEntity = scene.createEntity("camera");
+            scene.camera = cameraEntity.addComponent(new es.Camera());
         };
         return PlatformEvent;
     }());

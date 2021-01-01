@@ -25,5 +25,5 @@ gulp.task("buildDts", ["buildJs"], () => {
 
 gulp.task("build", ["buildDts"], () => {
     return gulp.src('bin/**/*')
-        // .pipe(gulp.dest('../demo_egret/libs/framework/'))
+        .pipe(gulp.dest('../../demo/egret_demo/libs/ecs_ext/'))
 });

@@ -23,10 +23,6 @@ declare module es {
          * 简化对内部类的全局内容实例的访问
          */
         static _instance: Core;
-        /**
-         * 用于确定是否应该使用EntitySystems
-         */
-        static entitySystemsEnabled: boolean;
         private _scene;
         private _nextScene;
         _sceneTransition: SceneTransition;
@@ -40,9 +36,7 @@ declare module es {
         private _globalManagers;
         private _coroutineManager;
         private _timerManager;
-        width: number;
-        height: number;
-        constructor(width: number, height: number, enableEntitySystems?: boolean);
+        constructor();
         /**
          * 提供对单例/游戏实例的访问
          * @constructor
@@ -105,7 +99,7 @@ declare module es {
          */
         protected onGraphicsDeviceReset(): void;
         protected initialize(): void;
-        protected update(currentTime?: number): Promise<void>;
+        protected update(): Promise<void>;
         protected draw(): void;
     }
 }
@@ -122,6 +116,7 @@ declare module es {
         private static setRenderTarget;
         private static setResolutionOffset;
         private static setResuolutionScale;
+        private static createCamera;
     }
 }
 declare module es {
