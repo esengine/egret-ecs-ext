@@ -4,6 +4,7 @@ module es {
      * 一个简单的渲染器可以直接启动Batcher.instanceGraphics.batcher，也可以创建自己的本地Batcher实例
      */
     export abstract class Renderer implements IComparer<Renderer>, IRenderer {
+        public readonly renderId: Ref<number> = new Ref(null);
         /** Batcher使用的材料。任何RenderableComponent都可以覆盖它 */
         public material: Material = Material.defaultMaterial;
         /** 
@@ -76,11 +77,12 @@ module es {
         protected beginRender(cam: Camera) {
             // 如果我们有一个renderTarget渲染进去
             if (this.renderTexture != null) {
-
+                Framework.emitter.emit(CoreEvents.setRenderTarget, this.renderTexture);
+                Framework.emitter.emit(CoreEvents.clearGraphics);
             }
 
             this._currentMaterial = this.material;
-            Graphics.instance.batcher.begin(this._currentMaterial.effect, Matrix2D.toMatrix(cam.transformMatrix));
+            Graphics.instance.batcher.begin(this.renderId, this._currentMaterial.effect, Matrix2D.toMatrix(cam.transformMatrix));
         }
 
         public abstract render(scene: Scene);
@@ -110,7 +112,7 @@ module es {
          */
         private flushBatch(cam: Camera) {
             Graphics.instance.batcher.end();
-            Graphics.instance.batcher.begin(this._currentMaterial.effect, Matrix2D.toMatrix(cam.transformMatrix));
+            Graphics.instance.batcher.begin(this.renderId, this._currentMaterial.effect, Matrix2D.toMatrix(cam.transformMatrix));
         }
 
         /**
@@ -128,7 +130,7 @@ module es {
          */
         protected debugRender(scene: Scene, cam: Camera) {
             Graphics.instance.batcher.end();
-            Graphics.instance.batcher.begin(null, Matrix2D.toMatrix(cam.transformMatrix));
+            Graphics.instance.batcher.begin(this.renderId, null, Matrix2D.toMatrix(cam.transformMatrix));
 
             for (let entity of scene.entities.buffer) {
                 if (entity.enabled)
@@ -141,7 +143,12 @@ module es {
          * @param newWidth 
          * @param newHeight 
          */
-        public onSceneBackBufferSizeChanged(newWidth: number, newHeight: number) { }
+        public onSceneBackBufferSizeChanged(newWidth: number, newHeight: number) { 
+            if (this.renderTexture) {
+                this.renderTexture.$sourceWidth = newWidth;
+                this.renderTexture.$sourceHeight = newHeight;
+            }
+        }
 
         public compare(other: Renderer) {
             return this.renderOrder - other.renderOrder;

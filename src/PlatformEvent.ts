@@ -7,7 +7,6 @@ module es {
             Screen.width = Core.Instance.stage.stageWidth;
             Screen.height = Core.Instance.stage.stageHeight;
 
-            Core.emitter.addObserver(CoreEvents.clearGraphics, this.clearGraphics, this);
             Core.emitter.addObserver(CoreEvents.addDefaultRender, this.addDefaultRenderer, this);
             Core.emitter.addObserver(CoreEvents.createRenderTarget, this.createRenderTarget, this);
             Core.emitter.addObserver(CoreEvents.disposeRenderTarget, this.disposeRenderTarget, this);
@@ -21,10 +20,6 @@ module es {
 
         private static addDefaultRenderer() {
             Core.scene.addRenderer(new DefaultRenderer());
-        }
-
-        private static clearGraphics() {
-
         }
 
         private static createRenderTarget(texture: Ref<egret.RenderTexture>, width: number, height: number) {

@@ -10,6 +10,7 @@ module es {
      * - 在TickEffectProgressProperty上再次屈服，以解除对屏幕的遮挡并显示新的场景。
      */
     export abstract class SceneTransition {
+        protected readonly perviousRenderId: Ref<number> = new Ref(null);
         /**
          * 包含上一个场景的最后渲染。可以用来在加载新场景时遮挡屏幕
          */
@@ -120,7 +121,7 @@ module es {
          * @param batcher 
          */
         public render(batcher: Batcher) {
-            batcher.begin(null, Matrix2D.toMatrix(Matrix2D.identity), false);
+            batcher.begin(this.perviousRenderId, null, Matrix2D.toMatrix(Matrix2D.identity), false);
             batcher.draw(this.previousSceneRender, Vector2.zero);
             batcher.end();
         }

@@ -284,7 +284,6 @@ var es;
         PlatformEvent.initialize = function () {
             es.Screen.width = es.Core.Instance.stage.stageWidth;
             es.Screen.height = es.Core.Instance.stage.stageHeight;
-            es.Core.emitter.addObserver(es.CoreEvents.clearGraphics, this.clearGraphics, this);
             es.Core.emitter.addObserver(es.CoreEvents.addDefaultRender, this.addDefaultRenderer, this);
             es.Core.emitter.addObserver(es.CoreEvents.createRenderTarget, this.createRenderTarget, this);
             es.Core.emitter.addObserver(es.CoreEvents.disposeRenderTarget, this.disposeRenderTarget, this);
@@ -296,8 +295,6 @@ var es;
         };
         PlatformEvent.addDefaultRenderer = function () {
             es.Core.scene.addRenderer(new es.DefaultRenderer());
-        };
-        PlatformEvent.clearGraphics = function () {
         };
         PlatformEvent.createRenderTarget = function (texture, width, height) {
             texture.value = new egret.RenderTexture();
@@ -964,12 +961,42 @@ var es;
         function SpriteRenderer(sprite) {
             if (sprite === void 0) { sprite = null; }
             var _this = _super.call(this) || this;
+            /**
+             * 渲染时，批处理程序传递给批处理程序。flipX/flipY是设置此项的帮助程序
+             */
+            _this.spriteEffects = es.SpriteEffects.none;
             if (sprite instanceof es.Sprite)
                 _this.setSprite(sprite);
             else if (sprite instanceof egret.Texture)
                 _this.setSprite(new es.Sprite(sprite));
             return _this;
         }
+        Object.defineProperty(SpriteRenderer.prototype, "bounds", {
+            get: function () {
+                if (this._areBoundsDirty) {
+                    if (this._sprite != null)
+                        this._bounds.calculateBounds(this.entity.transform.position, this._localOffset, this._origin, this.entity.transform.scale, this.entity.transform.rotation, this._sprite.sourceRect.width, this._sprite.sourceRect.height);
+                    this._areBoundsDirty = false;
+                }
+                return this._bounds;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(SpriteRenderer.prototype, "width", {
+            get: function () {
+                return this.bounds.width;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(SpriteRenderer.prototype, "height", {
+            get: function () {
+                return this._bounds.height;
+            },
+            enumerable: true,
+            configurable: true
+        });
         Object.defineProperty(SpriteRenderer.prototype, "origin", {
             /**
              * 精灵的原点。这是在设置精灵时自动设置的
@@ -983,6 +1010,42 @@ var es;
              */
             set: function (value) {
                 this.setOrigin(value);
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(SpriteRenderer.prototype, "originNormalized", {
+            /**
+             * 用于以规范化方式设置原点的辅助对象属性（0-1表示x和y）
+             */
+            get: function () {
+                return new es.Vector2(this._origin.x / this.width * this.entity.transform.scale.x, this._origin.y / this.height * this.entity.transform.scale.y);
+            },
+            set: function (value) {
+                this.setOrigin(new es.Vector2(value.x * this.width / this.entity.transform.scale.x, value.y * this.height / this.entity.transform.scale.y));
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(SpriteRenderer.prototype, "flipY", {
+            /**
+             * 确定精灵是正常渲染还是垂直翻转
+             */
+            get: function () {
+                return (this.spriteEffects & es.SpriteEffects.flipVertically) == es.SpriteEffects.flipHorizontally;
+            },
+            set: function (value) {
+                this.spriteEffects = value ? (this.spriteEffects | es.SpriteEffects.flipVertically) : (this.spriteEffects & ~es.SpriteEffects.flipVertically);
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(SpriteRenderer.prototype, "flipX", {
+            get: function () {
+                return (this.spriteEffects & es.SpriteEffects.flipHorizontally) == es.SpriteEffects.flipHorizontally;
+            },
+            set: function (value) {
+                this.spriteEffects = value ? (this.spriteEffects | es.SpriteEffects.flipHorizontally) : (this.spriteEffects & ~es.SpriteEffects.flipHorizontally);
             },
             enumerable: true,
             configurable: true
@@ -1014,6 +1077,7 @@ var es;
             this._sprite = sprite;
             if (this._sprite) {
                 this._origin = this._sprite.origin;
+                this._areBoundsDirty = true;
             }
             return this;
         };
@@ -1027,8 +1091,48 @@ var es;
             }
             return this;
         };
+        /**
+         * 用于以规范化方式设置原点的辅助对象（0-1表示x和y）
+         * @param value
+         */
+        SpriteRenderer.prototype.setOriginNormalized = function (value) {
+            this.setOrigin(new es.Vector2(value.x * this.width / this.entity.transform.scale.x, value.y * this.height / this.entity.transform.scale.y));
+        };
+        /**
+         * 用轮廓绘制可渲染对象。请注意，这应该在禁用的可渲染对象上调用，因为如果它们需要一个ouline，就不应该参与默认渲染
+         * @param batcher
+         * @param camera
+         * @param outlineColor
+         * @param offset
+         */
+        SpriteRenderer.prototype.drawOutline = function (batcher, camera, outlineColor, offset) {
+            if (outlineColor === void 0) { outlineColor = 0x000000; }
+            if (offset === void 0) { offset = 1; }
+            var originalPosition = this._localOffset.clone();
+            var originalColor = this.color;
+            var originalLayerDepth = this._layerDepth;
+            this.color = outlineColor;
+            this._layerDepth += 0.01;
+            for (var i = -1; i < 2; i++)
+                for (var j = -1; j < 2; j++)
+                    if (i != 0 || j != 0) {
+                        this._localOffset = es.Vector2.add(originalPosition, new es.Vector2(i * offset, j * offset));
+                        this.render(batcher, camera);
+                    }
+            this._localOffset = originalPosition;
+            this.color = originalColor;
+            this._layerDepth = originalLayerDepth;
+        };
+        /**
+         * @override
+         * @param batcher
+         * @param camera
+         */
+        SpriteRenderer.prototype.render = function (batcher, camera) {
+            batcher.draw(this.sprite.texture2D, es.Vector2.add(this.entity.transform.position, this.localOffset), this.color, this.entity.transform.rotation, this.origin, this.entity.transform.scale, this.spriteEffects, this._layerDepth);
+        };
         return SpriteRenderer;
-    }(es.Component));
+    }(es.RenderableComponent));
     es.SpriteRenderer = SpriteRenderer;
 })(es || (es = {}));
 ///<reference path="./SpriteRenderer.ts" />
@@ -1474,6 +1578,11 @@ var es;
             _this._projectionMatrix.m42 = 1;
             _this._projectionMatrix.m43 = 0;
             _this._projectionMatrix.m44 = 1;
+            es.Core.Instance.stage.addChild(_this);
+            _this.idDisplayObjectDic = new Map();
+            // 预热displayobject对象
+            es.Pool.warmCache(egret.DisplayObject, 3);
+            es.Core.emitter.addObserver(es.CoreEvents.clearGraphics, _this.clear, _this);
             return _this;
         }
         Object.defineProperty(Batcher.prototype, "transformMatrix", {
@@ -1490,28 +1599,60 @@ var es;
             this.dispose(true);
         };
         Batcher.prototype.dispose = function (disposing) {
+            var _this = this;
             if (!this.isDisposed && disposing) {
                 this._spriteEffect = null;
+                this.idDisplayObjectDic.forEach(function (displayObject, key) {
+                    if (displayObject.parent)
+                        displayObject.parent.removeChild(displayObject);
+                    _this.idDisplayObjectDic.delete(key);
+                    es.Pool.free(displayObject);
+                });
             }
             _super.prototype.dispose.call(this, disposing);
         };
-        Batcher.prototype.begin = function (effect, transformationMatrix, disableBatching) {
+        /**
+         * 移除所有显示对象
+         */
+        Batcher.prototype.clear = function () {
+            this.idDisplayObjectDic.forEach(function (displayObject) {
+                if (displayObject instanceof egret.Shape) {
+                    displayObject.graphics.clear();
+                }
+                else if (displayObject instanceof egret.Bitmap) {
+                    displayObject.texture = null;
+                }
+                else {
+                    // unkown type
+                }
+            });
+        };
+        Batcher.prototype.begin = function (id, effect, transformationMatrix, disableBatching) {
             if (transformationMatrix === void 0) { transformationMatrix = es.Matrix2D.toMatrix(es.Matrix2D.identity); }
             if (disableBatching === void 0) { disableBatching = false; }
             es.Insist.isFalse(this._beginCalled, "在最后一次调用Begin后，在调用End之前已经调用了Begin。在End被成功调用之前，不能再调用Begin");
+            this._id = id;
             this._beginCalled = true;
             this._customEffect = effect;
             this._transformMatrix = transformationMatrix;
             this._disableBatching = disableBatching;
             if (this._disableBatching)
                 this.prepRenderState();
-            this._displayObject = new egret.DisplayObject();
+            if (id.value == null) {
+                id.value = es.RenderableComponent.renderIdGenerator++;
+                this._displayObject = es.Pool.obtain(egret.DisplayObject);
+                this.idDisplayObjectDic.set(id.value, this._displayObject);
+            }
+            else {
+                this._displayObject = this.idDisplayObjectDic.get(id.value);
+            }
         };
         Batcher.prototype.end = function () {
             es.Insist.isTrue(this._beginCalled, "End已经被调用，但Begin还没有被调用。在调用End之前，必须先成功调用Begin");
             this._beginCalled = false;
             this._displayObject.cacheAsBitmap = this._disableBatching;
-            this.addChild(this._displayObject);
+            if (this._displayObject.parent == null)
+                this.addChild(this._displayObject);
             this._customEffect = null;
         };
         Batcher.prototype.prepRenderState = function () {
@@ -1548,9 +1689,11 @@ var es;
             this.setIgnoreRoundingDestinations(false);
         };
         Batcher.prototype.drawLine = function (start, end, color, thickness) {
-            this.drawLineAngle(start, es.MathHelper.angleBetweenVectors(start, end), es.Vector2.distance(start, end), color, thickness);
-        };
-        Batcher.prototype.drawLineAngle = function (start, radians, length, color, thickness) {
+            var shape = this._displayObject;
+            shape.graphics.lineStyle(thickness, color);
+            shape.graphics.moveTo(start.x, start.y);
+            shape.graphics.lineTo(end.x, end.y);
+            shape.graphics.endFill();
         };
         Batcher.prototype.drawPixel = function (position, color, size) {
             if (size === void 0) { size = 1; }
@@ -1559,6 +1702,10 @@ var es;
                 destRect.x -= size * 0.5;
                 destRect.y -= size * 0.5;
             }
+            var shape = this._displayObject;
+            shape.graphics.lineStyle(size, color);
+            shape.graphics.drawRect(destRect.x, destRect.y, destRect.width, destRect.height);
+            shape.graphics.endFill();
         };
         Batcher.prototype.drawPolygon = function (position, points, color, closePoly, thickness) {
             if (closePoly === void 0) { closePoly = true; }
@@ -1590,14 +1737,26 @@ var es;
             }
             this.setIgnoreRoundingDestinations(false);
         };
-        Batcher.prototype.draw = function (texture, position, color, rotation, origin, scale, effects) {
+        /**
+         * 传入需要绘制的组件或图形ID
+         * @param texture
+         * @param position
+         * @param color
+         * @param rotation
+         * @param origin
+         * @param scale
+         * @param effects
+         * @param layerDepth
+         */
+        Batcher.prototype.draw = function (texture, position, color, rotation, origin, scale, effects, layerDepth) {
             if (color === void 0) { color = 0xffffff; }
             if (rotation === void 0) { rotation = 0; }
             if (origin === void 0) { origin = es.Vector2.zero; }
             if (scale === void 0) { scale = es.Vector2.one; }
             if (effects === void 0) { effects = 0; }
+            if (layerDepth === void 0) { layerDepth = 0; }
             this.checkBegin();
-            this.pushSprite(texture, null, position.x, position.y, scale.x, scale.y, color, origin, rotation, 0, effects & 0x03, 0, 0, 0, 0);
+            this.pushSprite(texture, null, position.x, position.y, scale.x, scale.y, color, origin, rotation, layerDepth, effects & 0x03, 0, 0, 0, 0);
         };
         Batcher.prototype.checkBegin = function () {
             if (!this._beginCalled)
@@ -1605,8 +1764,6 @@ var es;
         };
         Batcher.prototype.pushSprite = function (texture, sourceRectangle, destinationX, destinationY, destinationW, destinationH, color, origin, rotation, depth, effects, skewTopX, skewBottomX, skewLeftY, skewRightY) {
             if (sourceRectangle === void 0) { sourceRectangle = null; }
-            if (this._numSprites >= this.MAX_SPRITES)
-                this.flushBatch();
             if (!this._shouldIgnoreRoundingDestinations && this.shouldRoundDestinations) {
                 destinationX = Math.round(destinationX);
                 destinationY = Math.round(destinationY);
@@ -1631,34 +1788,21 @@ var es;
                 originX = origin.x * (1 / texture.textureWidth);
                 originY = origin.y * (1 / texture.textureHeight);
             }
-            if (this._disableBatching) {
-                this.drawPrimitives(texture, 0, 1);
+            if (effects != 0) {
+                skewTopX *= -1;
+                skewBottomX *= -1;
+                skewLeftY *= -1;
+                skewRightY *= -1;
             }
-            else {
-                this._textureInfo[this._numSprites] = texture;
-                this._numSprites += 1;
-            }
-        };
-        Batcher.prototype.flushBatch = function () {
-            if (this._numSprites == 0)
-                return;
-            var offset = 0;
-            var curTexture = null;
-            this.prepRenderState();
-            curTexture = this._textureInfo[0];
-            for (var i = 1; i < this._numSprites; i += 1) {
-                if (this._textureInfo[i] != curTexture) {
-                    this.drawPrimitives(curTexture, offset, i - offset);
-                    curTexture = this._textureInfo[i];
-                    offset = i;
-                }
-            }
-            this.drawPrimitives(curTexture, offset, this._numSprites - offset);
-            this._numSprites = 0;
-        };
-        Batcher.prototype.drawPrimitives = function (texture, baseSprite, batchSize) {
-            var bitmap = new egret.Bitmap(texture);
-            this.addChild(bitmap);
+            var bitmap = this._displayObject;
+            bitmap.texture = texture;
+            this._displayObject.x = destinationX;
+            this._displayObject.y = destinationY;
+            this._displayObject.width = destinationW;
+            this._displayObject.height = destinationH;
+            this._displayObject.rotation = rotation;
+            this._displayObject.skewX = skewTopX;
+            this._displayObject.skewY = skewLeftY;
         };
         Batcher._cornerOffsetX = [0, 1, 0, 1];
         Batcher._cornerOffsetY = [0, 0, 1, 1];
@@ -1691,6 +1835,7 @@ var es;
     var Renderer = /** @class */ (function () {
         function Renderer(renderOrder, camera) {
             if (camera === void 0) { camera = null; }
+            this.renderId = new es.Ref(null);
             /** Batcher使用的材料。任何RenderableComponent都可以覆盖它 */
             this.material = es.Material.defaultMaterial;
             /**
@@ -1738,9 +1883,11 @@ var es;
         Renderer.prototype.beginRender = function (cam) {
             // 如果我们有一个renderTarget渲染进去
             if (this.renderTexture != null) {
+                es.Framework.emitter.emit(es.CoreEvents.setRenderTarget, this.renderTexture);
+                es.Framework.emitter.emit(es.CoreEvents.clearGraphics);
             }
             this._currentMaterial = this.material;
-            es.Graphics.instance.batcher.begin(this._currentMaterial.effect, es.Matrix2D.toMatrix(cam.transformMatrix));
+            es.Graphics.instance.batcher.begin(this.renderId, this._currentMaterial.effect, es.Matrix2D.toMatrix(cam.transformMatrix));
         };
         /**
          * 渲染RenderableComponent冲洗Batcher，并在必要时重置当前材料
@@ -1766,7 +1913,7 @@ var es;
          */
         Renderer.prototype.flushBatch = function (cam) {
             es.Graphics.instance.batcher.end();
-            es.Graphics.instance.batcher.begin(this._currentMaterial.effect, es.Matrix2D.toMatrix(cam.transformMatrix));
+            es.Graphics.instance.batcher.begin(this.renderId, this._currentMaterial.effect, es.Matrix2D.toMatrix(cam.transformMatrix));
         };
         /**
          * 结束Batcher并清除RenderTarget（如果有RenderTarget）
@@ -1782,7 +1929,7 @@ var es;
          */
         Renderer.prototype.debugRender = function (scene, cam) {
             es.Graphics.instance.batcher.end();
-            es.Graphics.instance.batcher.begin(null, es.Matrix2D.toMatrix(cam.transformMatrix));
+            es.Graphics.instance.batcher.begin(this.renderId, null, es.Matrix2D.toMatrix(cam.transformMatrix));
             for (var _i = 0, _a = scene.entities.buffer; _i < _a.length; _i++) {
                 var entity = _a[_i];
                 if (entity.enabled)
@@ -1794,7 +1941,12 @@ var es;
          * @param newWidth
          * @param newHeight
          */
-        Renderer.prototype.onSceneBackBufferSizeChanged = function (newWidth, newHeight) { };
+        Renderer.prototype.onSceneBackBufferSizeChanged = function (newWidth, newHeight) {
+            if (this.renderTexture) {
+                this.renderTexture.$sourceWidth = newWidth;
+                this.renderTexture.$sourceHeight = newHeight;
+            }
+        };
         Renderer.prototype.compare = function (other) {
             return this.renderOrder - other.renderOrder;
         };
@@ -1905,6 +2057,7 @@ var es;
         function SceneTransition(sceneLoadAction, wantsPreviousSceneRender) {
             if (sceneLoadAction === void 0) { sceneLoadAction = null; }
             if (wantsPreviousSceneRender === void 0) { wantsPreviousSceneRender = true; }
+            this.perviousRenderId = new es.Ref(null);
             this.sceneLoadAction = sceneLoadAction;
             this.wantsPreviousSceneRender = wantsPreviousSceneRender;
             this._loadsNewScene = sceneLoadAction != null;
@@ -1994,7 +2147,7 @@ var es;
          * @param batcher
          */
         SceneTransition.prototype.render = function (batcher) {
-            batcher.begin(null, es.Matrix2D.toMatrix(es.Matrix2D.identity), false);
+            batcher.begin(this.perviousRenderId, null, es.Matrix2D.toMatrix(es.Matrix2D.identity), false);
             batcher.draw(this.previousSceneRender, es.Vector2.zero);
             batcher.end();
         };
@@ -2057,6 +2210,7 @@ var es;
         __extends(ImageMaskTransition, _super);
         function ImageMaskTransition(sceneLoadAction, maskTexture) {
             var _this = _super.call(this, sceneLoadAction, true) || this;
+            _this.maskRenderId = new es.Ref(null);
             /**
              * 出入时间
              */
@@ -2143,7 +2297,7 @@ var es;
             });
         };
         ImageMaskTransition.prototype.preRender = function (batcher) {
-            batcher.begin(null);
+            batcher.begin(this.maskRenderId, null);
             batcher.draw(this._maskTexture, this._maskPosition, 0xffffff, this._renderRotation, this._maskOrigin, new es.Vector2(this._renderScale), es.SpriteEffects.none);
             batcher.end();
         };
@@ -2155,11 +2309,11 @@ var es;
         ImageMaskTransition.prototype.render = function (batcher) {
             // 如果我们要放大，我们就不需要再渲染之前的场景，因为我们希望新的场景是可见的
             if (!this._isNewSceneLoaded) {
-                batcher.begin(null);
+                batcher.begin(this.perviousRenderId, null);
                 batcher.draw(this.previousSceneRender, es.Vector2.zero);
                 batcher.end();
             }
-            batcher.begin(null);
+            batcher.begin(this.maskRenderId, null);
             batcher.draw(this._maskRenderTarget, es.Vector2.zero);
             batcher.end();
         };

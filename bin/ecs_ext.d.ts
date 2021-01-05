@@ -110,7 +110,6 @@ declare module es {
     class PlatformEvent {
         static initialize(): void;
         private static addDefaultRenderer;
-        private static clearGraphics;
         private static createRenderTarget;
         private static disposeRenderTarget;
         private static setRenderTarget;
@@ -368,7 +367,10 @@ declare module es {
     }
 }
 declare module es {
-    class SpriteRenderer extends Component {
+    class SpriteRenderer extends RenderableComponent {
+        readonly bounds: Rectangle;
+        readonly width: number;
+        readonly height: number;
         constructor(sprite?: Sprite | egret.Texture);
         protected _origin: Vector2;
         /**
@@ -379,6 +381,19 @@ declare module es {
         * @param value
         */
         origin: Vector2;
+        /**
+         * 用于以规范化方式设置原点的辅助对象属性（0-1表示x和y）
+         */
+        originNormalized: Vector2;
+        /**
+         * 确定精灵是正常渲染还是垂直翻转
+         */
+        flipY: boolean;
+        flipX: boolean;
+        /**
+         * 渲染时，批处理程序传递给批处理程序。flipX/flipY是设置此项的帮助程序
+         */
+        spriteEffects: SpriteEffects;
         protected _sprite: Sprite;
         /**
          * 应该由这个精灵显示的精灵
@@ -400,6 +415,25 @@ declare module es {
          * @param origin
          */
         setOrigin(origin: Vector2): SpriteRenderer;
+        /**
+         * 用于以规范化方式设置原点的辅助对象（0-1表示x和y）
+         * @param value
+         */
+        setOriginNormalized(value: Vector2): void;
+        /**
+         * 用轮廓绘制可渲染对象。请注意，这应该在禁用的可渲染对象上调用，因为如果它们需要一个ouline，就不应该参与默认渲染
+         * @param batcher
+         * @param camera
+         * @param outlineColor
+         * @param offset
+         */
+        drawOutline(batcher: Batcher, camera: Camera, outlineColor?: number, offset?: number): void;
+        /**
+         * @override
+         * @param batcher
+         * @param camera
+         */
+        render(batcher: Batcher, camera: Camera): void;
     }
 }
 declare module es {
@@ -634,7 +668,6 @@ declare module es {
         private _spriteEffect;
         private _beginCalled;
         private _disableBatching;
-        private _numSprites;
         private _transformMatrix;
         private _projectionMatrix;
         private _matrixTransformMatrix;
@@ -643,10 +676,16 @@ declare module es {
         private readonly MAX_SPRITES;
         static readonly _cornerOffsetX: number[];
         static readonly _cornerOffsetY: number[];
+        private idDisplayObjectDic;
+        private _id;
         constructor(graphicsDevice: GraphicsDevice);
         disposed(): void;
         protected dispose(disposing: boolean): void;
-        begin(effect: egret.CustomFilter, transformationMatrix?: Matrix, disableBatching?: boolean): void;
+        /**
+         * 移除所有显示对象
+         */
+        private clear;
+        begin(id: Ref<number>, effect: egret.CustomFilter, transformationMatrix?: Matrix, disableBatching?: boolean): void;
         end(): void;
         prepRenderState(): void;
         /**
@@ -657,15 +696,23 @@ declare module es {
         drawHollowRect(rect: Rectangle, color: number, thickness?: number): void;
         drawHollowBounds(x: number, y: number, width: number, height: number, color: number, thickness?: number): void;
         drawLine(start: Vector2, end: Vector2, color: number, thickness: any): void;
-        drawLineAngle(start: Vector2, radians: number, length: number, color: number, thickness: number): void;
         drawPixel(position: Vector2, color: number, size?: number): void;
         drawPolygon(position: Vector2, points: Vector2[], color: number, closePoly?: boolean, thickness?: number): void;
         drawCircle(position: Vector2, radius: number, color: number, thickness?: number, resolution?: number): void;
-        draw(texture: egret.Texture, position: Vector2, color?: number, rotation?: number, origin?: Vector2, scale?: Vector2, effects?: SpriteEffects): void;
+        /**
+         * 传入需要绘制的组件或图形ID
+         * @param texture
+         * @param position
+         * @param color
+         * @param rotation
+         * @param origin
+         * @param scale
+         * @param effects
+         * @param layerDepth
+         */
+        draw(texture: egret.Texture, position: Vector2, color?: number, rotation?: number, origin?: Vector2, scale?: Vector2, effects?: SpriteEffects, layerDepth?: number): void;
         private checkBegin;
         private pushSprite;
-        flushBatch(): void;
-        drawPrimitives(texture: egret.Texture, baseSprite: number, batchSize: number): void;
     }
 }
 declare module es {
@@ -682,6 +729,7 @@ declare module es {
      * 一个简单的渲染器可以直接启动Batcher.instanceGraphics.batcher，也可以创建自己的本地Batcher实例
      */
     abstract class Renderer implements IComparer<Renderer>, IRenderer {
+        readonly renderId: Ref<number>;
         /** Batcher使用的材料。任何RenderableComponent都可以覆盖它 */
         material: Material;
         /**
@@ -815,6 +863,7 @@ declare module es {
      * - 在TickEffectProgressProperty上再次屈服，以解除对屏幕的遮挡并显示新的场景。
      */
     abstract class SceneTransition {
+        protected readonly perviousRenderId: Ref<number>;
         /**
          * 包含上一个场景的最后渲染。可以用来在加载新场景时遮挡屏幕
          */
@@ -891,6 +940,7 @@ declare module es {
      * Texture应该在应该遮蔽的地方是透明的，在应该遮蔽的地方是白色的
      */
     class ImageMaskTransition extends SceneTransition {
+        protected readonly maskRenderId: Ref<number>;
         /**
          * 出入时间
          */

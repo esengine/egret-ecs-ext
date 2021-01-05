@@ -14,13 +14,10 @@ module es {
         public shouldRoundDestinations: boolean = true;
 
         private _shouldIgnoreRoundingDestinations: boolean;
-        private _textureInfo: egret.Texture[];
         private _spriteEffect: SpriteEffect;
         // 跟踪开始/结束调用
         private _beginCalled: boolean;
         private _disableBatching: boolean;
-        // 本批次有多少个精灵
-        private _numSprites: number;
 
         // 创建投影矩阵时要使用的矩阵
         private _transformMatrix: Matrix;
@@ -36,6 +33,9 @@ module es {
 
         static readonly _cornerOffsetX: number[] = [0, 1, 0, 1];
         static readonly _cornerOffsetY: number[] = [0, 0, 1, 1];
+
+        private idDisplayObjectDic: Map<number, egret.DisplayObject>;
+        private _id: Ref<number>;
 
         constructor(graphicsDevice: GraphicsDevice) {
             super();
@@ -65,6 +65,13 @@ module es {
             this._projectionMatrix.m42 = 1;
             this._projectionMatrix.m43 = 0;
             this._projectionMatrix.m44 = 1;
+
+            Core.Instance.stage.addChild(this);
+            this.idDisplayObjectDic = new Map();
+            // 预热displayobject对象
+            Pool.warmCache(egret.DisplayObject, 3);
+
+            Core.emitter.addObserver(CoreEvents.clearGraphics, this.clear, this);
         }
 
         public disposed() {
@@ -74,13 +81,36 @@ module es {
         protected dispose(disposing: boolean) {
             if (!this.isDisposed && disposing) {
                 this._spriteEffect = null;
+
+                this.idDisplayObjectDic.forEach((displayObject, key)=>{
+                    if (displayObject.parent)
+                        displayObject.parent.removeChild(displayObject);
+                    this.idDisplayObjectDic.delete(key);
+                    Pool.free(displayObject);
+                });
             }
 
             super.dispose(disposing);
         }
 
-        public begin(effect: egret.CustomFilter, transformationMatrix: Matrix = Matrix2D.toMatrix(Matrix2D.identity), disableBatching: boolean = false) {
+        /**
+         * 移除所有显示对象
+         */
+        private clear() {
+            this.idDisplayObjectDic.forEach((displayObject)=>{
+                if (displayObject instanceof egret.Shape) {
+                    displayObject.graphics.clear();
+                } else if (displayObject instanceof egret.Bitmap) {
+                    displayObject.texture = null;
+                } else {
+                    // unkown type
+                }
+            });
+        }
+
+        public begin(id: Ref<number>, effect: egret.CustomFilter, transformationMatrix: Matrix = Matrix2D.toMatrix(Matrix2D.identity), disableBatching: boolean = false) {
             Insist.isFalse(this._beginCalled, "在最后一次调用Begin后，在调用End之前已经调用了Begin。在End被成功调用之前，不能再调用Begin");
+            this._id = id;
             this._beginCalled = true;
 
             this._customEffect = effect;
@@ -90,7 +120,13 @@ module es {
             if (this._disableBatching)
                 this.prepRenderState();
 
-            this._displayObject = new egret.DisplayObject();
+            if (id.value == null){
+                id.value = RenderableComponent.renderIdGenerator++;
+                this._displayObject = Pool.obtain(egret.DisplayObject);
+                this.idDisplayObjectDic.set(id.value, this._displayObject);
+            } else {
+                this._displayObject = this.idDisplayObjectDic.get(id.value);
+            }
         }
 
         public end() {
@@ -98,7 +134,8 @@ module es {
             this._beginCalled = false;
 
             this._displayObject.cacheAsBitmap = this._disableBatching;
-            this.addChild(this._displayObject);
+            if (this._displayObject.parent == null)
+                this.addChild(this._displayObject);
 
             this._customEffect = null;
         }
@@ -142,11 +179,11 @@ module es {
         }
 
         public drawLine(start: Vector2, end: Vector2, color: number, thickness) {
-            this.drawLineAngle(start, MathHelper.angleBetweenVectors(start, end), Vector2.distance(start, end), color, thickness);
-        }
-
-        public drawLineAngle(start: Vector2, radians: number, length: number, color: number, thickness: number) {
-
+            let shape = this._displayObject as egret.Shape;
+            shape.graphics.lineStyle(thickness, color);
+            shape.graphics.moveTo(start.x, start.y);
+            shape.graphics.lineTo(end.x, end.y);
+            shape.graphics.endFill();
         }
 
         public drawPixel(position: Vector2, color: number, size: number = 1) {
@@ -155,6 +192,11 @@ module es {
                 destRect.x -= size * 0.5;
                 destRect.y -= size * 0.5;
             }
+
+            let shape = this._displayObject as egret.Shape;
+            shape.graphics.lineStyle(size, color);
+            shape.graphics.drawRect(destRect.x, destRect.y, destRect.width, destRect.height);
+            shape.graphics.endFill();
         }
 
         public drawPolygon(position: Vector2, points: Vector2[], color: number,
@@ -192,17 +234,29 @@ module es {
             this.setIgnoreRoundingDestinations(false);
         }
 
+        /**
+         * 传入需要绘制的组件或图形ID
+         * @param texture 
+         * @param position 
+         * @param color 
+         * @param rotation 
+         * @param origin 
+         * @param scale 
+         * @param effects 
+         * @param layerDepth 
+         */
         public draw(texture: egret.Texture,
             position: Vector2,
             color: number = 0xffffff,
             rotation: number = 0,
             origin: Vector2 = Vector2.zero,
             scale: Vector2 = Vector2.one,
-            effects: SpriteEffects = 0
+            effects: SpriteEffects = 0,
+            layerDepth: number = 0
         ) {
             this.checkBegin();
             this.pushSprite(texture, null, position.x, position.y, scale.x, scale.y,
-                color, origin, rotation, 0, effects & 0x03, 0, 0, 0, 0);
+                color, origin, rotation, layerDepth, effects & 0x03, 0, 0, 0, 0);
         }
 
         private checkBegin() {
@@ -214,8 +268,6 @@ module es {
             destinationW: number, destinationH: number, color: number, origin: Vector2,
             rotation: number, depth: number, effects: SpriteEffects, skewTopX: number,
             skewBottomX: number, skewLeftY: number, skewRightY: number) {
-            if (this._numSprites >= this.MAX_SPRITES)
-                this.flushBatch();
 
             if (!this._shouldIgnoreRoundingDestinations && this.shouldRoundDestinations) {
                 destinationX = Math.round(destinationX);
@@ -245,40 +297,25 @@ module es {
                 originY = origin.y * (1 / texture.textureHeight);
             }
 
-            if (this._disableBatching) {
-                this.drawPrimitives(texture, 0, 1);
-            } else {
-                this._textureInfo[this._numSprites] = texture;
-                this._numSprites += 1;
-            }
-        }
-
-        public flushBatch() {
-            if (this._numSprites == 0)
-                return;
-
-            let offset = 0;
-            let curTexture: egret.Texture = null;
-
-            this.prepRenderState();
-
-            curTexture = this._textureInfo[0];
-            for (let i = 1; i < this._numSprites; i += 1) {
-                if (this._textureInfo[i] != curTexture) {
-                    this.drawPrimitives(curTexture, offset, i - offset);
-                    curTexture = this._textureInfo[i];
-                    offset = i;
-                }
+            if (effects != 0) {
+                skewTopX *= -1;
+                skewBottomX *= -1;
+                skewLeftY *= -1;
+                skewRightY *= -1;
             }
 
-            this.drawPrimitives(curTexture, offset, this._numSprites - offset);
+            let bitmap = this._displayObject as egret.Bitmap;
+            bitmap.texture = texture;
 
-            this._numSprites = 0;
-        }
-
-        public drawPrimitives(texture: egret.Texture, baseSprite: number, batchSize: number) {
-            let bitmap = new egret.Bitmap(texture);
-            this.addChild(bitmap);
+            this._displayObject.x = destinationX;
+            this._displayObject.y = destinationY;
+            this._displayObject.width = destinationW;
+            this._displayObject.height = destinationH;
+            this._displayObject.rotation = rotation;
+            this._displayObject.skewX = skewTopX;
+            this._displayObject.skewY = skewLeftY;
+            this._displayObject.anchorOffsetX = originX;
+            this._displayObject.anchorOffsetY = originY;
         }
     }
 }

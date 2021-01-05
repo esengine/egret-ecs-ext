@@ -6,6 +6,7 @@ module es {
      * Texture应该在应该遮蔽的地方是透明的，在应该遮蔽的地方是白色的
      */
     export class ImageMaskTransition extends SceneTransition {
+        protected readonly maskRenderId: Ref<number> = new Ref(null);
         /**
          * 出入时间
          */
@@ -100,7 +101,7 @@ module es {
         }
 
         public preRender(batcher: Batcher) {
-            batcher.begin(null);
+            batcher.begin(this.maskRenderId, null);
             batcher.draw(this._maskTexture, this._maskPosition, 0xffffff, this._renderRotation, this._maskOrigin,
                 new Vector2(this._renderScale), SpriteEffects.none);
             batcher.end();
@@ -116,12 +117,12 @@ module es {
         public render(batcher: Batcher) {
             // 如果我们要放大，我们就不需要再渲染之前的场景，因为我们希望新的场景是可见的
             if (!this._isNewSceneLoaded) {
-                batcher.begin(null);
+                batcher.begin(this.perviousRenderId, null);
                 batcher.draw(this.previousSceneRender, Vector2.zero);
                 batcher.end();
             }
 
-            batcher.begin(null);
+            batcher.begin(this.maskRenderId, null);
             batcher.draw(this._maskRenderTarget, Vector2.zero);
             batcher.end();
         }
